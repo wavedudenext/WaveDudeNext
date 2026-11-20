@@ -67,16 +67,34 @@ public sealed class AvaloniaExportDialogs(Control anchor) : IExportDialogs
 			ShowOverwritePrompt = true,
 			SuggestedStartLocation = folder.Length > 0 && Directory.Exists(folder) ? await storage.TryGetFolderFromPathAsync(folder) : null,
 		};
-		IStorageFile? file = await storage.SaveFilePickerAsync(options);
-		string? path = file?.TryGetLocalPath();
+		SaveFilePickerResult picked = await storage.SaveFilePickerWithResultAsync(options);
+		string? path = picked.File?.TryGetLocalPath();
 		if (path == null)
 		{
 			return null;
 		}
-		// the filter the user chose: the platform's dialog does not say, so it is read from the extension typed or
-		// appended; a path that names none of them keeps the one offered first
-		int chosen = formats.Count > 0 && ExportFormats.FromPath(path) is { } format ? Math.Max(0, formats.ToList().IndexOf(format)) : preset;
+		// the filter the user chose: macOS says which one. Where the platform does not (SelectedFileType is null), it is read
+		// from the extension typed or appended, which cannot tell apart filters that share one (the QuickTime movies are all
+		// .mov: the first of them, the Animation codec, would be taken whatever was chosen); a path that names none of them
+		// keeps the one offered first
+		int reported = picked.SelectedFileType is { } selected ? IndexOfFileType(types, selected) : -1;
+		int chosen = reported >= 0
+			? reported
+			: formats.Count > 0 && ExportFormats.FromPath(path) is { } format ? Math.Max(0, formats.ToList().IndexOf(format)) : preset;
 		return new SavePick(path, chosen);
+	}
+
+	/// <summary>The place of a file type in the list that was offered: the same object, which is what the platform hands back, else the same label.</summary>
+	private static int IndexOfFileType(IReadOnlyList<FilePickerFileType> types, FilePickerFileType type)
+	{
+		for (int i = 0; i < types.Count; i++)
+		{
+			if (ReferenceEquals(types[i], type) || types[i].Name == type.Name)
+			{
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	/// <inheritdoc/>

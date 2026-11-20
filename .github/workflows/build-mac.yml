@@ -1,0 +1,29 @@
+name: macOS build
+
+# Builds WaveDude Next.app (the Avalonia head, WaveDudeNext.App) as a universal app on a real Mac and uploads the .dmg and
+# .zip. Run it from the Actions tab (workflow_dispatch) or by pushing a version tag.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  mac:
+    runs-on: macos-15   # Apple silicon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build the universal app
+        shell: bash
+        run: bash Packaging/Mac/build-app.sh universal 2>&1 | tee build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: WaveDudeNext-mac
+          if-no-files-found: warn
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            build.log

@@ -201,6 +201,9 @@ public partial class App : Application
 	public override void Initialize()
 	{
 		AvaloniaXamlLoader.Load(this);
+		// the name of the application menu in the macOS menu bar ("Hide ...", "Quit ..."), read after this method; Avalonia's
+		// default is "Avalonia Application"
+		Name = "WaveDude Next";
 	}
 
 	/// <inheritdoc />
