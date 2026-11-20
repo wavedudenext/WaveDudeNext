@@ -322,7 +322,9 @@ public sealed class Exporter : ObservableObject
 		Logger.Debug("Export: {What} as {Format} to {Path}", still ? "the shown frame " + stillFrame : field && intensity ? "field and intensity" : field ? "field" : "intensity", format, chosen);
 		if (!ExportFormats.IsAvailable(format))
 		{
-			Logger.Error("MP4 export is not available: Media Foundation is missing on this computer (Windows N needs the Media Feature Pack)");
+			Logger.Error("{Format} export is not available on this computer: {Reason}", format, OperatingSystem.IsWindows()
+				? "Media Foundation is missing (Windows N needs the Media Feature Pack)"
+				: "MP4 is written with Windows Media Foundation; use the QuickTime Photo-JPEG movie, MPEG-1 or a PNG sequence");
 			Failed?.Invoke(this, new ExportFailure("ExportError", null));
 			return;
 		}

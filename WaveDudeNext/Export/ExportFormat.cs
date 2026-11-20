@@ -30,6 +30,8 @@ public enum ExportFormat
 	Mov,
 	/// <summary>A QuickTime movie with the PNG codec: lossless RGB, each frame a PNG, far smaller than the Animation codec on a wave picture; for Resolve, Premiere and Final Cut (2026-10-19). Shares the extension with <see cref="Mov"/>: the dialog's filter tells them apart.</summary>
 	MovPng,
+	/// <summary>A QuickTime movie with the Photo-JPEG codec: each frame a baseline JPEG (4:4:4), lossy at the quality setting, small, and the one QuickTime codec that macOS decodes with nothing installed (the Animation and the PNG codec are not). Shares the extension with <see cref="Mov"/>: the dialog's filter tells them apart.</summary>
+	MovJpeg,
 	/// <summary>A PNG per frame in a folder of its own; lossless.</summary>
 	Png,
 	/// <summary>A JPEG per frame in a folder of its own; the quality setting applies.</summary>
@@ -127,12 +129,12 @@ public static class ExportFormats
 	}
 
 	/// <summary>The formats in filter order: the videos, then the sequences.</summary>
-	public static readonly ExportFormat[] All = [ExportFormat.Mp4, ExportFormat.Mpeg1, ExportFormat.Avi, ExportFormat.Mov, ExportFormat.MovPng, ExportFormat.Png, ExportFormat.Jpeg, ExportFormat.Exr, ExportFormat.ExrRoot];
+	public static readonly ExportFormat[] All = [ExportFormat.Mp4, ExportFormat.Mpeg1, ExportFormat.Avi, ExportFormat.Mov, ExportFormat.MovPng, ExportFormat.MovJpeg, ExportFormat.Png, ExportFormat.Jpeg, ExportFormat.Exr, ExportFormat.ExrRoot];
 
 	/// <summary>The formats a still can take, in the order of the still's filter: the sequence formats.</summary>
 	public static readonly ExportFormat[] Stills = [ExportFormat.Png, ExportFormat.Jpeg, ExportFormat.Exr, ExportFormat.ExrRoot];
 
-	/// <summary>The file extensions a format accepts, with their dots, the first the one it writes; both MOV formats take <c>.mov</c>, both OpenEXR ones <c>.exr</c>.</summary>
+	/// <summary>The file extensions a format accepts, with their dots, the first the one it writes; the three MOV formats take <c>.mov</c>, both OpenEXR ones <c>.exr</c>.</summary>
 	public static string[] Extensions(ExportFormat format) => format switch
 	{
 		ExportFormat.Png => [".png"],
@@ -141,7 +143,7 @@ public static class ExportFormats
 		ExportFormat.Mpeg1 => [".mpg", ".mpeg", ".m1v"],
 		ExportFormat.Avi => [".avi"],
 		ExportFormat.Mp4 => [".mp4", ".m4v"],
-		ExportFormat.Mov or ExportFormat.MovPng => [".mov", ".qt"],
+		ExportFormat.Mov or ExportFormat.MovPng or ExportFormat.MovJpeg => [".mov", ".qt"],
 		_ => throw new ArgumentOutOfRangeException(nameof(format)),
 	};
 
@@ -198,7 +200,7 @@ public static class ExportFormats
 	};
 
 	/// <summary>Whether the quality setting means anything to the format.</summary>
-	public static bool UsesQuality(ExportFormat format) => format is ExportFormat.Jpeg or ExportFormat.Mpeg1 or ExportFormat.Mp4;
+	public static bool UsesQuality(ExportFormat format) => format is ExportFormat.Jpeg or ExportFormat.Mpeg1 or ExportFormat.Mp4 or ExportFormat.MovJpeg;
 
 	/// <summary>Whether the format can be written here (MP4 needs Media Foundation).</summary>
 	public static bool IsAvailable(ExportFormat format) => format != ExportFormat.Mp4 || (OperatingSystem.IsWindows() && Mp4Writer.IsAvailable());
@@ -264,6 +266,8 @@ public static class ExportFormats
 				return new MovWriter(path, width, height, fps, plannedFrames);
 			case ExportFormat.MovPng:
 				return new MovWriter(path, width, height, fps, plannedFrames, MovCodec.Png);
+			case ExportFormat.MovJpeg:
+				return new MovWriter(path, width, height, fps, plannedFrames, MovCodec.Jpeg, quality);
 			default:
 				throw new ArgumentOutOfRangeException(nameof(format));
 		}

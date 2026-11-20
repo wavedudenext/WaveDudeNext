@@ -69,7 +69,13 @@ public sealed class ExportPaths(ProjectDocument document)
 	/// </summary>
 	public ExportFormat Format
 	{
-		get => ExportFormats.All[Math.Clamp(Settings.Default.ExportFilterIndex, 0, ExportFormats.All.Length - 1)];
+		get
+		{
+			ExportFormat format = ExportFormats.All[Math.Clamp(Settings.Default.ExportFilterIndex, 0, ExportFormats.All.Length - 1)];
+			// the first filter, MP4, is what a first start remembers, and only Windows can write it (Media Foundation):
+			// elsewhere the dialog starts with the Photo-JPEG QuickTime movie: the one video format a Mac plays natively
+			return ExportFormats.IsAvailable(format) ? format : ExportFormat.MovJpeg;
+		}
 		set => Settings.Default.ExportFilterIndex = Math.Max(0, Array.IndexOf(ExportFormats.All, value));
 	}
 

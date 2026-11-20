@@ -27,6 +27,8 @@ public enum MovCodec
 	Animation,
 	/// <summary>The PNG codec (<c>png </c>): every sample a whole PNG file of the frame, deflate-coded, which packs a wave picture far tighter than runs do (2026-10-19, the user's request, for a lossless hand-over to Resolve, Premiere and Final Cut).</summary>
 	Png,
+	/// <summary>The Photo-JPEG codec (<c>jpeg</c>): every sample a baseline JPEG file of the frame from <see cref="JpegEncoder"/> (4:4:4, lossy at the chosen quality). The QuickTime codec that macOS decodes with nothing installed: Apple's own player reports "System support for decoding this track: No" for the Animation and the PNG codec (<c>avmediainfo</c>, macOS 27.0.1, 2026-11-19) and "Yes" for Photo-JPEG.</summary>
+	Jpeg,
 }
 
 /// <summary>
@@ -35,7 +37,8 @@ public enum MovCodec
 /// After Effects and Resolve all decode without anything installed (2026-10-15, the user's choice: one
 /// lossless single-file format per container, this one for the editors, the uncompressed AVI for the
 /// Windows tools), or with the PNG codec (<c>png </c>, <see cref="MovCodec"/>), the same movie with each sample a
-/// PNG file from <see cref="PngEncoder"/>. In-house, no dependencies. The <c>moov</c> with the sample tables comes first: its size
+/// PNG file from <see cref="PngEncoder"/>, or with the Photo-JPEG codec (<c>jpeg</c>), each sample a JPEG file from
+/// <see cref="JpegEncoder"/>, which is what a Mac plays. In-house, no dependencies. The <c>moov</c> with the sample tables comes first: its size
 /// follows from the planned frame count (a fixed part plus 12 bytes a frame), so that much is reserved
 /// after <c>ftyp</c> as a <c>free</c> atom, the samples go into one <c>mdat</c> behind it as they come, and at
 /// close the reservation is overwritten with the real <c>moov</c> and a <c>free</c> atom for the rest (the
@@ -62,6 +65,8 @@ public sealed class MovWriter : IFrameSink
 	private readonly List<int> _sizes = [];
 	private readonly byte[] _row;
 	private byte[] _frame;
+	private readonly JpegEncoder? _jpeg;
+	private readonly int[]? _jpegPixels;
 	private bool _closed;
 
 	/// <param name="path">Output file; an existing file is replaced.</param>
@@ -70,11 +75,18 @@ public sealed class MovWriter : IFrameSink
 	/// <param name="framesPerSecond">Playback rate; the movie's time scale.</param>
 	/// <param name="plannedFrames">How many frames will come at most, which sizes the reservation for the leading <c>moov</c>; 0 puts it at the end.</param>
 	/// <param name="codec">The video codec; the Animation codec by default.</param>
-	public MovWriter(string path, int width, int height, int framesPerSecond, int plannedFrames = 0, MovCodec codec = MovCodec.Animation)
+	/// <param name="quality">1 to 100, for the Photo-JPEG codec only (the others are lossless).</param>
+	public MovWriter(string path, int width, int height, int framesPerSecond, int plannedFrames = 0, MovCodec codec = MovCodec.Animation, int quality = 90)
 	{
 		Width = width;
 		Height = height;
 		Codec = codec;
+		Quality = Math.Clamp(quality, 1, 100);
+		if (codec == MovCodec.Jpeg)
+		{
+			_jpeg = new JpegEncoder(width, height, Quality);
+			_jpegPixels = new int[width * height];
+		}
 		FramesPerSecond = Math.Max(1, framesPerSecond);
 		Output = path;
 		PlannedFrames = Math.Max(0, plannedFrames);
@@ -118,6 +130,9 @@ public sealed class MovWriter : IFrameSink
 	/// <summary>The video codec the samples are coded with.</summary>
 	public MovCodec Codec { get; }
 
+	/// <summary>The JPEG quality, 1 to 100; of no consequence to the lossless codecs.</summary>
+	public int Quality { get; }
+
 	/// <summary>The frame count the leading moov was reserved for; 0 for a trailing moov.</summary>
 	public int PlannedFrames { get; }
 
@@ -146,6 +161,14 @@ public sealed class MovWriter : IFrameSink
 			long start = _stream.Position;
 			// unfiltered rows: a few percent larger, but what a player's libpng can decode in time (2026-10-19, VLC)
 			PngEncoder.Write(_stream, pixels, Width, Height, PngFilter.None);
+			length = (int)(_stream.Position - start);
+		}
+		else if (Codec == MovCodec.Jpeg)
+		{
+			// the encoder takes memory, and the caller may reuse its span: the frame goes through a buffer of ours
+			pixels[..(Width * Height)].CopyTo(_jpegPixels);
+			long start = _stream.Position;
+			_jpeg!.Write(_stream, _jpegPixels);
 			length = (int)(_stream.Position - start);
 		}
 		else
@@ -316,16 +339,18 @@ public sealed class MovWriter : IFrameSink
 	{
 		var e = new byte[86];
 		BinaryPrimitives.WriteUInt32BigEndian(e, 86);
-		(Codec == MovCodec.Png ? "png "u8 : "rle "u8).CopyTo(e.AsSpan(4));
+		ReadOnlySpan<byte> fourCc = Codec switch { MovCodec.Png => "png "u8, MovCodec.Jpeg => "jpeg"u8, _ => "rle "u8 };
+		fourCc.CopyTo(e.AsSpan(4));
 		BinaryPrimitives.WriteUInt16BigEndian(e.AsSpan(14), 1); // data reference index
 		"appl"u8.CopyTo(e.AsSpan(20)); // vendor
-		BinaryPrimitives.WriteUInt32BigEndian(e.AsSpan(28), 0x3FF); // spatial quality: lossless
+		// spatial quality: 0x3FF is the best a lossy codec offers, and what the lossless ones state
+		BinaryPrimitives.WriteUInt32BigEndian(e.AsSpan(28), Codec == MovCodec.Jpeg ? (uint)(Quality * 0x3FF / 100) : 0x3FF);
 		BinaryPrimitives.WriteUInt16BigEndian(e.AsSpan(32), (ushort)Width);
 		BinaryPrimitives.WriteUInt16BigEndian(e.AsSpan(34), (ushort)Height);
 		BinaryPrimitives.WriteUInt32BigEndian(e.AsSpan(36), 0x00480000); // 72 dpi
 		BinaryPrimitives.WriteUInt32BigEndian(e.AsSpan(40), 0x00480000);
 		BinaryPrimitives.WriteUInt16BigEndian(e.AsSpan(48), 1); // frames per sample
-		byte[] name = Encoding.ASCII.GetBytes(Codec == MovCodec.Png ? "PNG" : "Animation");
+		byte[] name = Encoding.ASCII.GetBytes(Codec switch { MovCodec.Png => "PNG", MovCodec.Jpeg => "Photo - JPEG", _ => "Animation" });
 		e[50] = (byte)name.Length;
 		name.CopyTo(e, 51);
 		BinaryPrimitives.WriteUInt16BigEndian(e.AsSpan(82), 24); // depth
