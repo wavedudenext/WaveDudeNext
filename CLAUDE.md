@@ -101,7 +101,10 @@ harnesses run.
   plate 32 px thick without a rise (Jeroen's choices of 2026-11-08; off, 64 and 32 before): `Load` gives a file up to
   version 3 the old values where it names none (`OverlayInExportRead`, `ThicknessRead`, `CoatingRead`, set by the setters
   as `Scene.DampingEdgeRead` is), and it is saved as version 4 with them written out; `library_check` proves it. The
-  examples up to 24 and the harnesses' projects stay version 3, `figures.wdproj` and Examples 25 to 33 are 4. Clipboard fragments carry no version and
+  examples up to 24 and the harnesses' projects stay version 3, `figures.wdproj` and Examples 25 to 33 are 4; nine of the
+  first 24 are 4 as well since the user saved them again on 2026-11-15 (12, 13, 15, 16, 18, 19, 20, 22 and 23; in 12,
+  13, 15 and 18 the damping band inside the canvas became a rim of the same depth outside it, and in 18 and 26 a
+  probe's line was made upright). Clipboard fragments carry no version and
   read with today's defaults.
 - **C# style**: modern and concise, expression-bodied accessors, no `this.`, no `IDisposable` on interfaces,
   `out` not `ref`, tabs, Allman; `///` docs state threading, units and coordinate systems. `grep -E`, not `-P`.

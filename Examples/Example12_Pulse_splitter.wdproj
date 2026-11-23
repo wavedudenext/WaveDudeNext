@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project Version="3" Seed="47427475">
+<Project Version="4" Seed="47427475">
 	<Description>Short coherent pulse divided by a beam splitter</Description>
-	<Scene Width="1400" Height="900" DampingEdge="32" />
+	<Scene Width="1400" Height="900" DampingEdge="-32" />
 	<Display>
 		<Field ColorScheme="Default field" Brightness="8.53" BlackLevel="-0.05" Preview="false" />
 		<Intensity ColorScheme="Default intensity" Brightness="3.6" />

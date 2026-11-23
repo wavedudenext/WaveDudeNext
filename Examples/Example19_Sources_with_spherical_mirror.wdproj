@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project Version="3" Seed="823923544">
+<Project Version="4" Seed="823923544">
 	<Description>Wave pulse emitted from the center of the curvature of a mirror, reflecting and then returning to the point of emission. Featuring timed probes. Notice that this simulation runs extremely fast on the GPU, when no video export is selected.</Description>
 	<Scene DampingEdge="-64" />
 	<Simulation Steps="3000" WaveSpeed="0.563" TimeDecay="8" />

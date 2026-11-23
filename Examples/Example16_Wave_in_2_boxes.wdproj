@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project Version="3" Seed="1006156977">
+<Project Version="4" Seed="1006156977">
 	<Description>Two boxes connected by a small pipe that allows for wave energy to flow from left to right (and back).</Description>
 	<Scene Width="1500" Height="900" DampingEdge="11" />
 	<Simulation Steps="9000" TimeDecay="5" />

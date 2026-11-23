@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project Version="3" Seed="717445987">
+<Project Version="4" Seed="717445987">
 	<Description>Demo of a Bragg reflector. The layer thickness of each layer should be 1/4 lambda divided by the refractive index of the specific layer. However, reflectivity is strongly angle dependent.</Description>
-	<Scene Width="1400" DampingEdge="64" />
+	<Scene Width="1400" DampingEdge="-64" />
 	<Display>
 		<Field ColorScheme="Default field" Brightness="8" BlackLevel="-0.05" Preview="false" />
 		<Intensity ColorScheme="Simply red" Brightness="8" />

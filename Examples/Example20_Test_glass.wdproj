@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project Version="3" Seed="1352239642">
+<Project Version="4" Seed="1352239642">
 	<Description>The simulation shows the interference pattern created between two high-refractive index surfaces in close proximity of each other under a small angle.</Description>
 	<Scene DampingEdge="-64" />
 	<Simulation Steps="4000" TimeDecay="5" />

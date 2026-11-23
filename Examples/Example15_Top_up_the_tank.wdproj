@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project Version="3" Seed="47427475">
+<Project Version="4" Seed="47427475">
 	<Description>Filling a tank with radiative energy</Description>
-	<Scene Width="1800" Height="900" DampingEdge="32" />
+	<Scene Width="1800" Height="900" DampingEdge="-32" />
 	<Simulation Steps="5000" />
 	<Display>
 		<Field ColorScheme="Default field" Brightness="8.53" BlackLevel="-0.05" Preview="false" />
