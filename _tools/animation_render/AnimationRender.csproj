@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Renders a project's run as two animated WebP pictures, field and intensity, without a window (2026-11-14, for
+       the README's animations; ExampleAnimations.ps1 beside it runs it over the examples): the library's run and
+       export with the frames piped to ffmpeg. Not part of the solution; run with "dotnet run" on this project
+       (Release) -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Windows with WPF: the probe graph boxes and the markers over the frames are the WPF head's painters -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AnimationRender</RootNamespace>
+    <!-- the .editorconfig code-style rules are build warnings too: a file without the license header (IDE0073) -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!-- UseWPF drops System.IO from the implicit usings -->
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <!-- the library for the run and the export, the UI library for the colour schemes, the WPF head for what it draws
+       over an export's frames -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\WaveDudeNext\WaveDudeNext.csproj" />
+    <ProjectReference Include="..\..\WaveDudeNext.UI\WaveDudeNext.UI.csproj" />
+    <ProjectReference Include="..\..\WaveDudeNext.WPF\WaveDudeNext.WPF.csproj" />
+  </ItemGroup>
+
+</Project>

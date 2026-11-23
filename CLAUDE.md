@@ -1132,6 +1132,53 @@ bitmap WPF scales) and writes the SVG with its size in CSS pixels over a view bo
 manual's converter (`SvgReader`, a uniform view-box scale) and browsers draw at the 100 % size; the PNGs declare their
 density. The window must fit the monitor (nothing off it is composed): at 2 the 1314 × 1126 window would be 2252 px
 tall, more than the 4K monitor; 1.25 and 1.5 fit, the properties session's 1400 too.
+**README animations** (2026-11-14, the user's request: animated WebP candidates of the examples he calls interesting,
+3, 12, 13, 15, 16, 18, 19, 20, 22, 23, 26, 27, 28, 30 and 31, field and intensity, to choose from for the README):
+**`_tools/animation_render`**, a console project of its own (`AnimationRender.csproj`, not in the solution, as
+`library_check`; his choice of three: a mode of `library_check`, which cannot draw the graph boxes, a start-up switch
+of the app, or this) with `ExampleAnimations.ps1` beside it. The console renders one project without a window: what
+File > Export > Export both writes, from the same pieces (`Project.Load`, the scene image through `WpfImageDecoder`,
+`PartPainter.Paint`, `RunSpec.Create` at `PreviewQuality.Full` with the intensity, `FrameStore` and `SimulationRun`
+without a context, the targets as `Exporter.StartAsync` makes them, `ColorSchemeCatalog.LutFor`, `GlowingEdges`,
+`WpfFrameDecorators` for the graph boxes and markers; it references the library, the UI library and the WPF head, a
+WinExe, for its painters), with `FfmpegSink`, an `IFrameSink` whose frames go into an ffmpeg process's standard input
+as they are (`rawvideo`, `bgr0`: the alpha byte means nothing), **no master file and no codec between the rendered
+pixels and ffmpeg's scaler** (his choice of two, over QuickTime with the PNG codec, which he had named the best
+master: "H.264 … reduces the quality right off the bat"); ffmpeg picks the frames of the animation's rate (`fps`),
+scales with Lanczos and writes looping lossy WebP frames. `--last-frame` ends the animation at a timeline frame and
+**the run is only as long as the animation** (`Simulation.Steps` shortened before the spec is made), so a graph whose
+step axis spans the whole run spans the animation, where the app's export of a range would show the whole run's axis;
+mine, said to him. The frames stay in memory; a run that does not fit `FrameMemory.Budget` is refused (exit code 3)
+unless `--allow-disk-cache`. The script holds **the cut-off frame of each example** (his request: "some examples just
+keep going and going and nothing interesting happening anymore"): the `$cutOffs` table at its top, the timeline's
+frame number, the last frame kept, 0 for the whole export range, all 0 until he fills them in; `-CutOff <frame>`
+stands in for the table to try one; `-Width` 480, `-Fps` 15, `-Speed` 2 (his word after the first full set: "a global
+speed-up factor, set it to 2"; the frames given to ffmpeg are played at the project's video frame rate times it, so
+half the frames and half the time), `-Quality` 75, `-Out` (default `%TEMP%\WaveDudeNext\ExampleAnimations`); it
+builds the console, runs it per example below normal priority and writes `index.html`, which lists every animation in
+the folder with the facts read from its chunks. **The console's build writes the WPF head's `bin\Release` too**, the
+head being a reference: with the Release app open it fails (MSB3021, the app holding `WaveDudeNext.UI.dll`), and
+then he is told and closes the app. An artifacts path of the tool's own, which I built into the script for that the
+first time it happened, he had taken out again ("revert that stupid change. The only problem is you not telling me
+when you want me to release something, we don't have to promote that to a change every time it happens"). Proven: Example 26 to
+frame 600 in 13 s (run 0.9 s, 1.7 GB of frames in memory, frames 11 s), 150 frames, 10.0 s, 1.4 and 1.0 MB, a frame
+of each looked at: the colours, the outline, the probe's markers and its graph box as in the app's export, no alpha
+chunk; Examples 26 and 18 to frame 400 through the script, 10 and 5 s. **The fifteen at their full length**, in the
+background while he worked: 12.8 minutes, no problem, 30 animations, 118 MB (the largest Example 16's, 75 s, 11.5 and
+14.9 MB; the smallest Example 19's, 0.9 and 0.8 MB), up to 23.2 GB of frames in memory at a time, which left him 10 GB
+free meanwhile, nothing in the frame cache; a frame of Example 16's field and of Example 31's intensity looked at
+(the project's own colour scheme, the line probe, the two detectors' graph boxes). **What came before, each thrown out by him the
+same night**: a render stage on the keyboard harness, a session of the app per example ("The whole instrumentation
+through the GUI app is bogus", "launching the main window in my face"; it had worked, 42 s for Example 26, and had
+taken his keyboard focus at a start); H.264 masters (his "full uncompressed quality" was my wording's fault: "runs of
+up to 25 GB", "masters 258 MB", without saying which is memory); and an environment hook `WAVEDUDE_EXPORT_FORMAT` for
+the PNG codec through the scripted export path, built and taken out again within the hour. Measured on the way: the
+app's PNG-codec MOV is 313 KB a field frame and 398 KB an intensity frame for Example 26 (H.264: 91 and 22 KB), and
+this ffmpeg reads it. The ffmpeg on this machine's path is the 2018 build in ImageMagick's folder (a GPL build, used
+as a tool): its `webp` muxer makes the animation from plain `libwebp` frames; its `setpts` filter left the frame
+count alone, so a speed is the input's frame rate. PowerShell: a byte shifted stays a byte (`[int]` first); an
+ordered dictionary indexed with an int takes it for a position; and `powershell -File` hands `-Examples 26,18` over
+as one word, which as `[int[]]` read 2618, so the parameter is text.
 
 ## Port (macOS and Linux through Avalonia)
 
