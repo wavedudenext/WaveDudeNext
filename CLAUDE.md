@@ -162,6 +162,15 @@ harnesses run.
 
 - `dotnet build WaveDudeNext.sln` → 0 warnings. Harnesses use `WaveDudeNext.WPF\bin\Debug\net10.0-windows\WaveDudeNext.WPF.exe`,
   or the Avalonia head with `-Exe WaveDudeNext.App\bin\Debug\net10.0\WaveDudeNext.App.exe` (2026-11-11, every script takes it).
+  **Not the solution while the user's Start session serves the browser head** (port 5211; 2026-11-15, done once by
+  mistake): the solution build with the command-line SDK rewrites `WaveDudeNext.Browser\bin\Debug` and `obj` under
+  that session, with the command line's WebAssembly pack (10.0.12) where Visual Studio restores 10.0.15, so a reload
+  of his page finds other files than his host knows and his next Start mixes two toolsets. Then the projects are
+  built one by one (the library, the UI library, `WaveDudeNext.App`, `WaveDudeNext.WPF`). **When the browser head
+  itself must be built, that session's server is ended and the head is built in place** with Visual Studio's MSBuild
+  (`-restore`); **never in a copy of the tree in another directory** (2026-11-21, the user's words after a day of
+  builds in three copies under `%TEMP%`: "Just end the session/server then instead of fucking around in a different
+  directory to build"; until then this line had recommended the copy).
 - `dotnet run --project _tools/library_check -c Release` (`-- export`, `-- bench [w h]`, `-- bench-render [w h]`,
   `-- bench-export [w h]`); `powershell -ExecutionPolicy Bypass -File _tools/ui_check/<script>.ps1` (`-Trace`).
 - Publish: `dotnet publish WaveDudeNext.WPF/WaveDudeNext.WPF.csproj -p:PublishProfile=SingleFile` (framework-dependent;
@@ -187,8 +196,8 @@ harnesses run.
   the manual's document too, and since 2026-11-23 the Avalonia head's two documents (its `Dialect="Avalonia"`, see
   Port, "The manual and the license are converted at build in the Avalonia head too").
 - **The Avalonia head has the same two profiles** (2026-11-11, the user's request, the first step towards the release
-  files he wants, six and no more: 2× WPF, 2× Avalonia for Windows, 1× Linux x64, 1× macOS universal; the Linux format
-  and the Mac's signing are open): `dotnet publish WaveDudeNext.App/WaveDudeNext.App.csproj -p:PublishProfile=SingleFile`
+  files he wants, six and no more: 2× WPF, 2× Avalonia for Windows, 1× Linux x64, 1× macOS universal; the Linux file
+  is an AppImage, his word of 2026-11-15, the Mac's signing is open): `dotnet publish WaveDudeNext.App/WaveDudeNext.App.csproj -p:PublishProfile=SingleFile`
   and `SingleFileBundled`, the WPF profiles' properties, into the App project's `bin\Publish` and `bin\PublishBundled` as
   `WaveDudeNext-<version>-avalonia.exe` (38.1 MB; needs the plain .NET Runtime, not the Desktop one) and
   `WaveDudeNext-<version>-avalonia-bundled.exe` (111 MB). The suffix was chosen without him, his to change: one property
@@ -1099,6 +1108,24 @@ with Space, 43 of 43. Known flake: a second app start in one
 script sometimes comes up active; only the foreground guard fails then. UI Automation files an owned dialog (the message
 window, the memory warning) under its owner, not among the root's children: find its content below the main window and
 walk up to the Window element for its handle (2026-11-03, half an hour lost to a root search).
+**The app on a desktop of its own, which nobody sees** (2026-11-20, after the user's "stop putting windows in the
+front … stop stealing the focus"): a probe that needs the running WPF app and neither UI Automation nor a capture of
+the window starts it with `CreateProcess` on a desktop made by `CreateDesktop` (`STARTUPINFO.lpDesktop`
+"WinSta0\<name>", closed afterwards), with a .NET startup hook inside (`DOTNET_STARTUP_HOOKS`, as the in-app drag
+probe). Nothing shows on his screen and the foreground stays his (Outlook before and after, read from
+`GetForegroundWindow`). The app starts, lays out and draws there as usual (window 1772 × 1459, visible, the GPU
+engine, exit 0); the hook times on the UI thread with a stopwatch (`window.UpdateLayout()` for the layout,
+`Dispatcher.Invoke(() => { }, DispatcherPriority.Loaded)` for the render that follows, `ContextIdle` for idle),
+clears a binding with `BindingOperations.ClearBinding` to time one pane alone, and renders a control into a
+`RenderTargetBitmap` for a pixel comparison of two builds. The settings file is copied before and put back after,
+as around a harness. **Seen there and not understood**: a few measurements in which the step after the layout took
+145 ms (three times, to the millisecond alike) or 517 ms (once) instead of 2; a desktop that is never shown has no
+composition, so it may be that desktop's. Not tried there: the keyboard harnesses (UI Automation sees only its own
+desktop, so the script would have to run there too, and PrintWindow needs the composition). **The Avalonia head
+runs there the same way** (2026-11-20, at its first try): the hook a `net10.0` library against the App's assemblies,
+waiting for the lifetime's main window before it touches the dispatcher, the project opened through
+`MainWindow.View.Document`, a control rendered with Avalonia's `RenderTargetBitmap` and saved as a PNG, the lifetime's
+`Shutdown()` at the end (exit 0).
 **Manual figures** (2026-10-27): `Screenshots.ps1` on `Common.ps1` writes `Assets/*.svg` (the PNG inlined, numbered
 badges at UI Automation rectangles), `Assets/Legend.md` (what each number marks) and `Assets/main-window.png` (the
 window without badges, the README's picture, 2026-10-30): the window, the menus, the tree,
@@ -2967,6 +2994,10 @@ unspecified) into every file it makes, ffmpeg's too. Proven: `library_check` (a 
 (High, level 4.2; 1.2 s compiled, 39 s interpreted), both read back by ffmpeg with every frame and "yuv420p(tv, smpte170m/unknown/unknown)", a frame
 of each looked at; a page without `VideoEncoder`: the log's line and a dialog without MP4. Not seen: a long
 export, another browser, a card without an encoder (Baseline through the browser's software one).
+**The user's colour schemes: nothing was lost, and nothing was changed.** The item ("lost at a reload") was mine
+and wrong: no head ever writes a user scheme; the folder under `%LOCALAPPDATA%` is filled by hand, a scheme loaded
+from a file goes into the project and is saved with it, in a browser as on a desktop. A scheme library of a
+visitor's own in the browser would be a feature with a way in and a way out to design: put to him as options.
 **Paste**: `AvaloniaClipboard` had kept its first read for good wherever the clipboard's changes are not counted
 (anything but Windows: a browser, Linux, macOS), so a copy made elsewhere was never seen, and in a browser the
 first question from a menu read the clipboard, which is where a browser asks for its permission. Now: without a
@@ -3011,9 +3042,20 @@ Pages sends), 16.1 MB as brotli: the compiled program 13.3 MB of the gzip, `Wave
 anything shows. **Put to him, not done**: the figures out of the start's download (a build step that takes them
 out of the browser's copy of the assembly and a fetch when the manual opens), a host that sends brotli; trimming
 our three assemblies and compiling only part of the program are not worth their risk.
+**The manual** opens in 2.8 to 3.2 s in the compiled build (0.65 to 0.78 s to build the document, the rest its
+layout), against 1.4 s in the desktop Avalonia head (from its logs); the eight seconds of the earlier notes were
+the interpreted Debug build. No fault of the browser's; a faster manual is a lazier document in both heads.
 **Text on whole pixels**: `WholePixelShaper` is installed in the browser head as on the desktop
 (`AfterPlatformServicesSetup` in `Program.BuildAvaloniaApp`; its `Install` forgives a `NotSupportedException` too):
 stems whole 195 → 312, split 97 → 75 in one capture of the window, counted along every row.
+**Seen in the final Release build**: the start with the memory's stand-in constructor (4 GB), the shaper's line,
+"H.264: WebCodecs (High profile)", the MP4 export, a paste, About's encoder line, and Example 16 at 16-bit samples
+on the CPU engine (frame 614 from scratch, both pictures and the outline right). **Harness notes**: a save picker
+is stood in for by a page script that answers `showSaveFilePicker` with a handle of the page's own storage, the file
+then brought out through the debugging port as base64; `navigator.clipboard.read` and `write` can be given own
+functions the same way; a bench that hands an operation to a loop as a delegate measures the delegate (5 to 8 ns a
+call); Avalonia's browser clipboard reads with `navigator.clipboard.read()`, then `readText()`, then waits for a
+`paste` event.
 **Cut, and drags that leave the page** (2026-11-22, the user's pick from a second list, "then let's start with the
 copy-paste issue", and his word while it was done: "drag-and-drop is another issue"; uncommitted). **My list's
 first item was wrong**: I had read that Avalonia names the application's own clipboard format
@@ -3058,6 +3100,8 @@ two browser instances, and between the browser and the native version, "seems to
 Firefox and Safari, a drag's look under the pointer. **Harness notes**: the viewport override ends with the debugging session, and a session without it
 clicks at other places than the screenshots show (half an hour lost to it); `ClipboardItem.supports(type)`
 answers what a page may write without touching the clipboard.
+**The user's colour schemes in the browser stay as they are** (2026-11-22, his choice of three: no library of a
+visitor's own schemes there; a scheme travels in its project).
 **The loading mark is the icon, the name and a bar with the megabytes** (2026-11-22, the user's word on the spinner
 over the name: it "does its job, but looks like ass"; his choice, A, of five looks drawn as a page of mock-ups,
 all "logo and progress": A as built, B a ring around the round icon, C the progress as the application's blue
@@ -3289,7 +3333,7 @@ Private addresses stay out of files. The name was agreed with Jeroen (he propose
 before the rename); the browser version's site is the same organisation's `wavedudenext/wavedudenext.github.io`. The
 README's three links (releases, clone, issues) and the Avalonia head's About (`AboutInfo.Upstream`) name the new
 address; an issue number written down before the move (the native port's, #6) is the same issue there. This clone's
-remote, `github`, still names the old address, which GitHub forwards: his to change. The header text is the editorconfig template, identical in every file,
+remote, `github`, names the new address too. The header text is the editorconfig template, identical in every file,
 never reworded per file.
 
 ## Open items
