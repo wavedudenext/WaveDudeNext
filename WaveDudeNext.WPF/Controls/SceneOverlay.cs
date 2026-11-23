@@ -141,6 +141,22 @@ public sealed class SceneOverlay : Panel
 	private static readonly Brush HaloBrush = Freeze(new SolidColorBrush(Color.FromArgb(0xC0, 0, 0, 0)));
 	private static readonly Typeface LabelTypeface = new("Segoe UI");
 
+	/// <summary>The pen of the dark outline under a handle's name.</summary>
+	private static readonly Pen LabelHaloPen = MakeLabelHaloPen();
+
+	/// <summary>
+	/// The outline of each handle name's text, as drawn at the origin, kept by the name, the pixels per DIP and the
+	/// language: the glyphs' shapes are made into a geometry once and moved to the name's place when drawn. Until
+	/// 2026-11-19 every redraw of the labels' band made it again for every name, about a millisecond each, at every
+	/// change of the selection, every mouse move of a marquee and every move of a dragged handle: 10 to 12 ms for the
+	/// two pictures of a project with five names (the user's report: a slight stutter when a marquee was started with
+	/// an item selected, the press clearing the selection). Both pictures' overlays share it. UI thread.
+	/// </summary>
+	private static readonly Dictionary<(string Name, double PixelsPerDip, string Language), Geometry> LabelHalos = [];
+
+	/// <summary>Names kept in <see cref="LabelHalos"/> at most; beyond it the table starts again (renames leave old names behind).</summary>
+	private const int MostLabelHalos = 512;
+
 	private readonly HashSet<INotifyPropertyChanged> _subscribed = [];
 	private readonly HashSet<INotifyCollectionChanged> _pointLists = [];
 	private bool _regenerating;
@@ -1186,10 +1202,36 @@ public sealed class SceneOverlay : Panel
 			double lx = below ? Math.Clamp(centre.X - label.Width / 2, 0, Math.Max(0, size.Width - label.Width)) : Math.Min(centre.X + LabelOffset, Math.Max(0, size.Width - label.Width));
 			double ly = below ? Math.Min(centre.Y + LabelOffset, Math.Max(0, size.Height - label.Height)) : Math.Clamp(centre.Y - label.Height / 2, 0, Math.Max(0, size.Height - label.Height));
 			var origin = new Point(lx, ly);
-			// the text's outline in dark first (a halo), then the text
-			dc.DrawGeometry(null, new Pen(HaloBrush, 3.0) { LineJoin = PenLineJoin.Round }, label.BuildGeometry(origin));
+			// the text's outline in dark first (a halo), then the text; the outline is the name's kept one, moved to its place
+			dc.PushTransform(new TranslateTransform(lx, ly));
+			dc.DrawGeometry(null, LabelHaloPen, LabelHalo(label, name, pixelsPerDip));
+			dc.Pop();
 			dc.DrawText(label, origin);
 		}
+	}
+
+	/// <summary>The outline of <paramref name="label"/>'s text at the origin, from <see cref="LabelHalos"/>, made when the name is drawn for the first time.</summary>
+	private static Geometry LabelHalo(FormattedText label, string name, double pixelsPerDip)
+	{
+		(string, double, string) key = (name, pixelsPerDip, CultureInfo.CurrentUICulture.Name);
+		if (!LabelHalos.TryGetValue(key, out Geometry? halo))
+		{
+			if (LabelHalos.Count >= MostLabelHalos)
+			{
+				LabelHalos.Clear();
+			}
+			halo = label.BuildGeometry(new Point());
+			halo.Freeze();
+			LabelHalos[key] = halo;
+		}
+		return halo;
+	}
+
+	private static Pen MakeLabelHaloPen()
+	{
+		var pen = new Pen(HaloBrush, 3.0) { LineJoin = PenLineJoin.Round };
+		pen.Freeze();
+		return pen;
 	}
 
 	// ---------------------------------------------------------------- dropping objects onto the picture

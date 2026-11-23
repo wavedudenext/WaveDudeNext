@@ -924,7 +924,20 @@ and moved every antialiased edge by a few levels; the user's rule: ClearType in 
 order, the line probes, then the sources (axes and dots, cached), then the parts, the marquee and the labels: the figures
 with and without the cache differ on the dot rows alone, at most 53 levels at an antialiased edge, and the frame is
 14–21 ms with 6–8 at the bitmap. The dots' halo pen is frozen, since an unfrozen pen is cloned by every draw call. The
-probe graph overlay stays uncached: its drawing changes with the frame by design. **The sources' cache is renewed at
+probe graph overlay stays uncached: its drawing changes with the frame by design. **The outline under a handle's
+name is made once** (`SceneOverlay.LabelHalos`, 2026-11-20, the user's one finding of his pass by hand for 0.1.4: a
+slight stutter when a marquee was started with an item selected, the press clearing the selection): the labels'
+band had turned every name's text into a geometry at every redraw, about a millisecond a name, at every change of
+the selection, every mouse move of a marquee and every move of a dragged handle. Measured in the app on a desktop
+of its own (see Harnesses), Example 22 with a rectangle added, five names a picture: clearing the selection cost
+18–24 ms on the UI thread until the next picture was drawn, of which the tree 1, the properties pane's form going
+away 6–11, and the two handle overlays 10.3–12 whatever was selected (the graph overlays nothing); with the
+outlines kept by name, pixels per DIP and language and drawn under a translation, the overlays take 4.0–4.7 and
+the press 12–17, the form's going being the larger part now. The overlays' own drawing rendered into bitmaps,
+nothing selected and each of four kinds selected, both pictures: 0 bytes of 10 pictures differ between the two
+builds. The Avalonia head's overlay makes its outlines the same way (`label.BuildGeometry(origin)` in its
+`RenderLabels`) and was neither measured nor changed; nor was the export's `SourceMarkerPainter`, a label a frame.
+**The sources' cache is renewed at
 every source edit** (`RefreshSourcesCache`, 2026-11-08, Jeroen's report from his machine: after a mouse drag of Example 3's
 composite source its dots stayed put until another edit; the log showed the model moved and the scratch frame followed,
 and twenty keyboard moves could not repeat it, so the one thing the dots have that nothing else has, the bitmap cache,
