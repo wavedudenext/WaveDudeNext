@@ -2651,6 +2651,10 @@ in the rebuilt head: Example 16 with 16-bit samples at half resolution, both pic
 8 ms a frame while the run was followed. Left
 as it was that day: the two conversions' lanes ran at 8 ns a value on one thread there, a fifth of what four lanes
 should give (the `Vector128` shifts, found and mended the next day, see "The round of ten" below).
+**The interpreted methods**: `ExportJob.Render`'s sink loop and `SimulationRun.RunLoop` each had a catch inside a
+finally block, for which the compiler leaves a whole method to the interpreter; the catches are in a local function
+and a method of their own now (an IL scan for a handler inside a finally: 2 before, 0 after, none in the other
+assemblies of ours).
 **The conversion loops**: one operation at a time in a bench (a browser app under `%TEMP%` on the repository's
 library, compiled ahead of time, without threads): every lane operation of the two loops is the processor's own
 (0.2 to 0.4 ns a value) but the three `Vector128` shifts, which are not (4.2 ns for a line of three), and

@@ -385,16 +385,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 		}
 		finally
 		{
-			try
-			{
-				// captures still in flight must land before the engine goes (the writer stores them, cheaply)
-				DrainWriter();
-				(engine as IDisposable)?.Dispose();
-			}
-			catch (Exception ex)
-			{
-				Logger.Warn(ex, "The engine could not be released cleanly.");
-			}
+			ReleaseEngine(engine);
 		}
 		stopwatch.Stop();
 		TimeSpan elapsed = stopwatch.Elapsed;
@@ -419,6 +410,26 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 
 	/// <summary>Lets the writer finish the captures it holds; set by the loop once the writer exists.</summary>
 	private Action? _drainWriter;
+
+	/// <summary>
+	/// The end of the worker's loop, on its thread: the captures still in flight land, then the engine goes; a failure
+	/// of either is a warning. A method of its own: written out inside the loop's finally block, its catch made the
+	/// browser's compiler leave the whole loop to the interpreter (it cannot take a method over at an exception when
+	/// a catch lies inside a finally; seen in its list of such methods, 2026-11-21).
+	/// </summary>
+	private void ReleaseEngine(IWaveEngine? engine)
+	{
+		try
+		{
+			// captures still in flight must land before the engine goes (the writer stores them, cheaply)
+			DrainWriter();
+			(engine as IDisposable)?.Dispose();
+		}
+		catch (Exception ex)
+		{
+			Logger.Warn(ex, "The engine could not be released cleanly.");
+		}
+	}
 
 	private void DrainWriter()
 	{

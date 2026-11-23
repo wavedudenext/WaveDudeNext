@@ -231,6 +231,28 @@ public sealed class ExportJob : INotifyPropertyChanged
 		using var sinksReady = new ManualResetEventSlim();
 		Exception? sinkError = null;
 		Exception? closeError = null;
+		// The sinks' closing is a function of its own: written out inside the sink thread's finally block, its catch
+		// made the browser's compiler leave that whole thread body to the interpreter (it cannot take a method over at
+		// an exception when a catch lies inside a finally; seen in its list of such methods, 2026-11-21)
+		void CloseSinks()
+		{
+			foreach (ExportTarget target in Targets)
+			{
+				if (target.Sink == null)
+				{
+					continue;
+				}
+				try
+				{
+					target.Sink.Close();
+				}
+				catch (Exception ex)
+				{
+					Logger.Error(ex, "Closing {Output} failed: {Message}", target.Sink.Output, ex.Message);
+					closeError ??= ex;
+				}
+			}
+		}
 		Thread sink = StartThread("Export sinks", () =>
 		{
 			int written = 0;
@@ -288,22 +310,7 @@ public sealed class ExportJob : INotifyPropertyChanged
 			finally
 			{
 				// closed where they were opened: a Media Foundation writer is bound to its thread
-				foreach (ExportTarget target in Targets)
-				{
-					if (target.Sink == null)
-					{
-						continue;
-					}
-					try
-					{
-						target.Sink.Close();
-					}
-					catch (Exception ex)
-					{
-						Logger.Error(ex, "Closing {Output} failed: {Message}", target.Sink.Output, ex.Message);
-						closeError ??= ex;
-					}
-				}
+				CloseSinks();
 			}
 		});
 		try
