@@ -80,6 +80,43 @@ public static class Native
 		}
 	}
 
+	// The pixels of a screen-rectangle crop of the window's content, 4 bytes each (blue, green, red, unused), row by row,
+	// for "the same picture" checks (Unlike); a hash says only "not byte for byte the same"
+	public static byte[] Pixels(IntPtr hwnd, int x, int y, int w, int h)
+	{
+		RECT r;
+		using (var bmp = Grab(hwnd, out r))
+		{
+			BitmapData data = bmp.LockBits(new Rectangle(x - r.Left, y - r.Top, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+			try
+			{
+				var pixels = new byte[w * h * 4];
+				for (int row = 0; row < h; row++)
+					Marshal.Copy(IntPtr.Add(data.Scan0, row * data.Stride), pixels, row * w * 4, w * 4);
+				return pixels;
+			}
+			finally { bmp.UnlockBits(data); }
+		}
+	}
+
+	// How many pixels of two such crops differ by more than 'levels' in a colour channel; -1 for crops of different sizes.
+	// One level is what the desktop's composition leaves open in a picture the card scales up (the 8-bit preview's, a
+	// frame of the store's size drawn at the picture's): a pixel whose blend of two frame rows lies on the card's
+	// rounding edge takes one of two values, a level apart, by whether a full or a partial redraw of the window drew it
+	// last (2026-11-19, found by the release tests: 82 pixels of one row, with the pictures side by side, after nothing
+	// but the focus had gone from a handle and come back; the frame's data the same). A frame that differs, differs by
+	// many levels in many pixels.
+	public static int Unlike(byte[] first, byte[] second, int levels)
+	{
+		if (first == null || second == null || first.Length != second.Length) return -1;
+		int count = 0;
+		for (int i = 0; i + 3 < first.Length; i += 4)
+		{
+			if (Math.Abs(first[i] - second[i]) > levels || Math.Abs(first[i + 1] - second[i + 1]) > levels || Math.Abs(first[i + 2] - second[i + 2]) > levels) count++;
+		}
+		return count;
+	}
+
 	// WM_KEYDOWN / WM_KEYUP posted straight to the window: no SendInput, no focus change
 	public static void Key(IntPtr hwnd, int vk)
 	{
@@ -177,6 +214,12 @@ function RunStatus() { return (Find "StatusRun").Current.Name }
 function FieldHash() {
 	$r = (Find "PreviewFieldImage").Current.BoundingRectangle
 	return [Native]::Hash($script:hwnd, [int]$r.Left, [int]$r.Top, [int]$r.Width, [int]$r.Height)
+}
+# The field picture's pixels as drawn (overlay included), for "the same picture" checks: compared with
+# [Native]::Unlike(a, b, 1), since a hash fails on the one level the composition of a scaled picture leaves open
+function FieldPixels() {
+	$r = (Find "PreviewFieldImage").Current.BoundingRectangle
+	return ,([Native]::Pixels($script:hwnd, [int]$r.Left, [int]$r.Top, [int]$r.Width, [int]$r.Height))
 }
 # the centre of an element's screen rectangle
 function CentreOf([string]$id) { $r = (Find $id).Current.BoundingRectangle; return @(($r.Left + $r.Width / 2), ($r.Top + $r.Height / 2)) }

@@ -80,6 +80,7 @@ try {
 	Check "End in the tree selects the scheme, whose editor appears" ((FocusedId) -eq "Tree:Harness scheme" -and (Find "SchemeAddStop") -ne $null) (FocusedId)
 	# a rename of the scheme takes the field layer along: the picture keeps its colours (the default scheme would recolour it)
 	$before = FieldHash
+	$beforePixels = FieldPixels
 	FocusOn "SchemeName"   # the first stop after the tree
 	Key $VK_END 100
 	for ($i = 0; $i -lt 14; $i++) { Key $VK_BACK 30 }   # "Harness scheme"
@@ -88,7 +89,9 @@ try {
 	# the tree row's id is bound once (the item, not its name), so the row is found by the old id and read by its text
 	$row = (Find "Tree:Harness scheme").Current.Name
 	Check "typing a new scheme name renames the tree row" ($row -eq "Renamed") $row
-	Check "and the field picture keeps its colours: the layer followed the rename" ((FieldHash) -eq $before) ("hash {0} -> {1}" -f $before, (FieldHash))
+	# the same picture within one level a channel (Common.ps1, Unlike): the composition of a scaled picture leaves one open
+	$unlike = [Native]::Unlike($beforePixels, (FieldPixels), 1)
+	Check "and the field picture keeps its colours: the layer followed the rename" ($unlike -eq 0) ("{0} pixels differ by more than one level; hash {1} -> {2}" -f $unlike, $before, (FieldHash))
 	FocusOn $swatch
 	Check "Tab reaches the middle stop's swatch, whose hex box says #4080C0" ((Hex $hexBox) -eq "#4080C0") (Hex $hexBox)
 

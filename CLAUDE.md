@@ -2545,6 +2545,82 @@ and the timeline's ticks. **A figure run shows every look change since the last 
 will change, read the log of commits since the last one that touched `Assets` (that evening the prediction named two
 figures and eighteen changed).
 
+**The tests for the 0.1.4 release of the WPF head** (2026-11-19, the user's request: "extensive tests for the changes
+made since 0.1.3, including the export/rendering"; of the working tree, HEAD 1f198c0 with 76 uncommitted paths, 61
+commits past 0.1.3, be0023f). **A method for the next release, since it found what the harnesses could not**: the
+last release's tree exported with `git archive` under `%TEMP%` and built, and a one-off console compiled once
+against each version's library (the entry points it needs, `Project.Load`, `PartPainter.Paint`, `RunSpec.Create`,
+`FrameStore`, `SimulationRun`, `FrameRenderer`, `ExportJob`, `ExportFormats.Open`, were the same in both), which
+runs the old release's example files through both and prints a line of hashes for the painted scene, two frames of
+both planes on each engine, the probes' recordings, the rendered last frame and every export format's files; two
+result files, compared line by line. Its source and the scripts are kept with the results in
+`%TEMP%\WaveDudeNext\release-test-results` (not in the repository; his to say whether it becomes a tool).
+**Results.** (1) `library_check` 867 ok. (2) The three benches against the notes' figures; the GPU step read
+0.27–0.30 and 0.47–0.53 ms where the notes say 0.21 and 0.38: the 0.1.3 library measured the same that day,
+alternating, twice (0.26–0.29 and 0.48–0.51), so it is the machine's state, no regression. (3) The comparison
+with 0.1.3 over its 24 examples, 240 steps each, 596 lines: 21 examples identical in every line, scene, planes on
+both engines, probes, rendering and the files of AVI, both QuickTime codecs, MPEG-1, the PNG, JPEG and OpenEXR
+sequences, with the MP4 files the same but for 12 bytes of time stamps; Example 1 differs at its later frame on
+both engines, the smoothed square's envelope of 2026-11-10, intended; Examples 6 and 17 differ on the card alone,
+which was the bug of emitters sharing a cell (see Architecture), fixed that day. (4) All 33 current examples
+through the fixed library: no error, 297 exports, the card within 0.02 to 0.09 % of the CPU's field and three runs
+of it bit for bit the same on every one (Example 7 over 2000 steps, its emitters silent before). (5) The app
+against the 0.1.3 app: both layers of six projects as PNG sequences through File > Export by posted keys, 890 files,
+byte for byte the same (the decorations, the colours, an export run against 0.1.3's stored full-quality run).
+(6) The harnesses against the **Release** build: `PreviewCheck` 43, `RunCheck` 71 (stacked pictures), `LanguageCheck`
+0 failures, `ProbeGraphCheck` 39, `ImportCheck` 10, `ExportCheck` 45, `PreviewQualityCheck` 0 failures,
+`SceneImageCheck` 9, `ColorPickerCheck` 13, `AboutCheck` 18, `SelectionCheck` 10; `KeyboardCheck` 14 on the Debug
+build. The Release app's log of the day: 2378 lines, none at Warn or above, no logger without a name. (7) The
+single-file EXE published from the tree (8.5 MB, into `%TEMP%`): nine harness runs, all passed, its log clean, the
+exported MP4 decoded by ffmpeg, the manual opened by F1 (52 contents rows, the first figure with its badges).
+**What the run taught about the harnesses**: `LanguageCheck` and `PreviewQualityCheck` print a check only when it
+fails ("0 failure(s)" is their pass); `KeyboardCheck` needs a Debug build, its Messages walk tabbing to the Trace
+level a Release build does not have; a published EXE's log is `WaveDudeNext.WPF.log` whatever the EXE is called,
+so `ProbeGraphCheck` and `PreviewQualityCheck`, which take the log's name from the EXE's, cannot run against it;
+an array handed to `powershell -File` arrives as one word (again); and PowerShell's `$A` and `$a` are one variable
+(again). The harnesses run against the user's settings file: it was copied first and put back whole at the end
+(no app of his running), and the file types, which every start registers, were given back to the Release build
+by a last start of it. **One pixel row of an 8-bit picture differs by one level by how the window was last redrawn**
+(found as `RunCheck`'s "the re-run reproduces the original frame" failing after `PreviewCheck`, which leaves the
+pictures side by side; 71 of 71 stacked; first reported to the user as "cause not found", which he did not take:
+"fucking fix it buddy"). 82 scattered pixels of one row, a level lower in one channel. **No edit is needed for it**:
+the source's handle focused, the focus moved to any other element and back, and the row differs from the first
+capture and is the same at every later one; each stretch of the row is in one of two states by whether a full or a
+partial redraw of the window drew it last. The cause is the card's sampling of the scaled picture: the 8-bit frame
+(32 × 24 at half resolution) is drawn at 675 × 506 by WPF with linear filtering, row 719's weight between two frame
+rows is 85.50 of 256, the edge of the card's 8-bit rounding, and the texture coordinate differs by a hair between
+WPF's redraw passes. Proven by two builds: without interpolation the row is the same and a texel boundary flips
+instead, whole colours apart; with the picture in a bitmap cache of its own every stage of the cycle is pixel for
+pixel the same. **The cache is not the fix**: at a UI zoom of 1.25 and 1.5 the cached pictures differ from the
+uncached ones over their whole area by up to 48 levels, 8-bit and 16-bit alike (a cache is rendered at the
+element's own size and scaled by the zoom's transform), so it would blur the pictures there; at zoom 1 the 16-bit
+pictures, drawn 1:1, were pixel for pixel the same in both, so only the scaled 8-bit picture has such rows. The
+app is left as it is, the frame being right and the level invisible; **the harnesses compare "the same picture"
+within one level a channel** (`Common.ps1`: `[Native]::Pixels`, `[Native]::Unlike`, `FieldPixels`; `RunCheck`'s
+check and `ColorPickerCheck`'s "keeps its colours"; "differs" checks keep the hash). One level is the bound of the
+effect (a weight a 256th apart); a frame that differs does so by many levels in many pixels. Proven without the
+app, on the captures of the hunt: the pair a level apart, 34 pixels differing at all and none by more than one;
+the same frame scaled otherwise or moved by a frame row, over 300,000; `Pixels` on a form of the script's own shown
+far off the screen without activation; the three scripts parsed. **Not run: `RunCheck` and `ColorPickerCheck`
+themselves with the change**, the user having asked for no more windows that night. Why the 0.1.3 app passed: the
+same row, another redraw history. **Seen on the way, his to judge**: the preview pane, focusable and without a
+`FocusVisualStyle` of its own, shows WPF's dashed focus rectangle around the whole pane when the pane itself has
+the keyboard focus (after F5 by key: a dotted line 15 levels darker along the pane's edges in the dark theme),
+against the theme's rule of no focus rectangles; since before the rebrand.
+**The hunt cost him his patience** ("Stop putting windows in the front when it's not necessary, stop stealing the
+focus, and why did you have 3 instances open doing nothing!?"): about thirty short app sessions in half an hour
+while he worked, twelve of them at zoom 1.25 and 1.5, and three instances left open by a probe of mine that threw
+right after launching the app, its `Start-App` standing before the `try` whose `finally` closes it (a parameter
+named `$Park` had overwritten `Common.ps1`'s `$script:park`: PowerShell's variables know no case and a script's
+parameter is the script scope's variable). He closed them by hand and they saved my probe's orientation and their
+position into his settings file; both put back. **A probe that starts the app is a UI run like a harness**: `Start-App`
+goes inside the `try`; a script's parameters keep clear of `Common.ps1`'s names (`$p`, `$win`, `$hwnd`, `$park`,
+`$A`, `$Trace`); what can be read from captures already taken is read from them; and a series of sessions waits
+for his word. **Not covered by any of it, a hand's**: the mouse (drags of handles, the marquee, the
+gradient bar's markers, the tree's drag and drop, the graph boxes' grips), the memory warning's window, a second
+monitor of another scale, the bundled EXE, a machine without OpenCL or without the Desktop Runtime, and a figure
+run, which needs his word.
+
 **Unsolved: clicks on the intensity picture selected nothing** (2026-10-22, seen once, not reproduced). In
 Jeroen's `logical_elements_example.wdproj` (git history up to 02d0e2d; Example 18 is its curated form), after several
 undo and redo cycles (gates moved, undone, redone),

@@ -120,6 +120,7 @@ try {
 	FocusOn "Source:Source 1"
 	Start-Sleep -Milliseconds 200
 	$stored = FieldHash
+	$storedPixels = FieldPixels
 	Key $VK_RIGHT 100
 	Check "moving the source marks the run stale" (WaitFor { (RunStatus) -like "*edited since*" } 3000) (RunStatus)
 	Check "the shown frame is recomputed from scratch before any run" (WaitFor { (FieldHash) -ne $stored } 6000 200)
@@ -135,7 +136,11 @@ try {
 	Check "moving it back: stale, then the re-run once the edit has finished" ($stale -and (WaitFor { (RunStatus) -like "Completed:*" -and (RunStatus) -notlike "*edited since*" } 20000 200)) (RunStatus)
 	FocusOn "Source:Source 1"                      # the marker focused again, as when the stored picture was taken
 	Start-Sleep -Milliseconds 200
-	Check "the re-run reproduces the original frame (same picture)" ((FieldHash) -eq $stored) ("{0} vs {1}" -f (FieldHash).Substring(0, 8), $stored.Substring(0, 8))
+	# the same picture within one level a channel, not the same hash: where the card scales the frame up, a pixel on its
+	# rounding edge takes one of two values by how the window was last redrawn (Common.ps1, Unlike; 2026-11-19: this
+	# check failed with the pictures side by side, on 82 pixels of one row a level apart, the frame the same)
+	$unlike = [Native]::Unlike($storedPixels, (FieldPixels), 1)
+	Check "the re-run reproduces the original frame (same picture)" ($unlike -eq 0) ("{0} pixels differ by more than one level; hash {1} vs {2}" -f $unlike, (FieldHash).Substring(0, 8), $stored.Substring(0, 8))
 	# ------------------------------------------------------------ an edit during playback (2026-10-16)
 	# the whole run is stale, so playback stops at once where it is, the frame there is recomputed and the re-run
 	# follows with the position kept (before, every playback step restarted the scratch timer, behind which the
