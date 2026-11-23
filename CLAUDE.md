@@ -508,7 +508,17 @@ FrameStore: native memory up to the budget, the rest in a temp file (%LOCALAPPDA
   toggles, Shift+click adds; a drag of the handle of one of several selected items, or the arrows on it, moves them all
   through `IMovable` with the delta limited so none leaves the canvas (the formation holds); Escape during a drag puts
   things back; Remove, Duplicate and Enabled act on the whole selection when their target is in it; the lever, grips
-  and point handles belong to the current item alone. Probe graph boxes follow their probe while attached, resize by a grip, keep their text
+  and point handles belong to the current item alone. **Every selected probe's graph box has the selection's outline**
+  (2026-11-20, the user's report on Example 22: a marquee over both probes, or two rows taken in the tree, and one
+  graph alone was yellow): the graph overlay had known the current item alone, in both heads, where the handle overlay
+  knows the selected list. `ProbeGraphOverlay.SelectedItems`, bound by the preview pane as the handle overlay's is
+  (`PreviewPane.xaml`; the App's pane binds it in code beside the accent brush), `IsSelected` (the current item or one
+  of the list) for the outline and the thumbs' mark, and `DrawOrder` for `DrawnBoxes`: unselected boxes, then the
+  selected ones, the current item's last, so its box is still the one in front. Proven in both heads on a desktop of
+  its own (see Harnesses), each overlay rendered into a bitmap for four selections and the outline's colour counted
+  along each box's edges: before, with both selected, the current probe's box alone (whichever was current); after,
+  both; one selected and none selected unchanged. The App's box thumbs are a private class (`BoxThumb`), read by
+  reflection in such a probe. Probe graph boxes follow their probe while attached, resize by a grip, keep their text
   size; an amplitude axis is symmetric about zero; an intensity graph's value axis can be logarithmic (2026-10-20,
   Jeroen's point 8: `Decades` below the fitted top, zeros on the bottom line, powers-of-ten ticks; the field stays linear).
 - **Undo and redo** (2026-10-22, the user's request, unlimited): `ProjectHistory` keeps one snapshot per step, the

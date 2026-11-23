@@ -496,6 +496,8 @@ public partial class PreviewPane : UserControl
 			CornerTheme = this.TryFindResource("ProbeBoxCornerThumb", out object? cornerTheme) ? cornerTheme as ControlTheme : null,
 		};
 		graphs.Bind(ProbeGraphOverlay.AccentBrushProperty, this.GetResourceObservable("PictureSelection"));
+		// the whole selection, so every selected probe's box is outlined, not the current item's alone (2026-11-20)
+		graphs.Bind(ProbeGraphOverlay.SelectedItemsProperty, OwnBinding(nameof(SelectedItems)));
 		graphs.PropertyChanged += (_, e) =>
 		{
 			if (e.Property == ProbeGraphOverlay.SelectedItemProperty && !_syncing)

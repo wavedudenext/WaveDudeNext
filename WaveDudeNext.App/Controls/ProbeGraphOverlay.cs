@@ -17,6 +17,7 @@
 // <https://www.gnu.org/licenses/>.
 
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
@@ -191,12 +192,41 @@ public sealed class ProbeGraphOverlay : Panel
 		set => SetValue(CanvasHeightProperty, value);
 	}
 
-	/// <summary>The item selected in the project (its box gets the accent border); set when a box is grabbed or focused.</summary>
+	/// <summary>The item selected in the project (its box gets the accent border); set when a box is grabbed or focused. The current item of <see cref="SelectedItems"/>.</summary>
 	public object? SelectedItem
 	{
 		get => GetValue(SelectedItemProperty);
 		set => SetValue(SelectedItemProperty, value);
 	}
+
+	/// <summary>Identifies the <see cref="SelectedItems"/> property.</summary>
+	public static readonly StyledProperty<ObservableCollection<object>?> SelectedItemsProperty =
+		AvaloniaProperty.Register<ProbeGraphOverlay, ObservableCollection<object>?>(nameof(SelectedItems));
+
+	/// <summary>
+	/// The shared selection (the main view's): the box of every probe in it gets the accent border, as every selected
+	/// item's handle is highlighted on the pictures (2026-11-20, the user's report on the WPF head: of two probes
+	/// selected by a marquee or in the tree only the current one's graph was highlighted, the overlay having known the
+	/// current item alone).
+	/// </summary>
+	public ObservableCollection<object>? SelectedItems
+	{
+		get => GetValue(SelectedItemsProperty);
+		set => SetValue(SelectedItemsProperty, value);
+	}
+
+	private void OnSelectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+	{
+		// the selected boxes come to the front, the current item's first: the thumbs' clips follow the new order
+		InvalidateArrange();
+		InvalidateGraphs();
+	}
+
+	/// <summary>Whether <paramref name="item"/> is the current item or one of the selected ones.</summary>
+	private bool IsSelected(object item) => ReferenceEquals(item, SelectedItem) || (SelectedItems?.Contains(item) ?? false);
+
+	/// <summary>Where a probe's box lies among the drawn ones: the unselected first, the selected over them, the current item's in front of all.</summary>
+	private int DrawOrder(Probe probe) => ReferenceEquals(probe, SelectedItem) ? 2 : IsSelected(probe) ? 1 : 0;
 
 	/// <summary>Theme of the thumb covering a box (transparent, shows hover and focus).</summary>
 	public ControlTheme? BoxTheme
@@ -278,6 +308,19 @@ public sealed class ProbeGraphOverlay : Panel
 		else if (change.Property == LayerProperty || change.Property == BoxThemeProperty || change.Property == CornerThemeProperty || change.Property == CommandsProperty)
 		{
 			Rebuild();
+		}
+		else if (change.Property == SelectedItemsProperty)
+		{
+			if (change.OldValue is ObservableCollection<object> old)
+			{
+				old.CollectionChanged -= OnSelectionChanged;
+			}
+			if (change.NewValue is ObservableCollection<object> set)
+			{
+				set.CollectionChanged += OnSelectionChanged;
+			}
+			InvalidateArrange();
+			InvalidateGraphs();
 		}
 		else if (change.Property == ScratchProperty || change.Property == FrameProperty || change.Property == AccentBrushProperty
 			|| change.Property == SelectedItemProperty || change.Property == CanvasWidthProperty || change.Property == CanvasHeightProperty)
@@ -407,7 +450,7 @@ public sealed class ProbeGraphOverlay : Panel
 
 	/// <summary>
 	/// The boxes that are drawn, in the order they are drawn, the last in front: the shown probes in the project's order,
-	/// the selected one last, so its box lies over any box it overlaps; a box too small to draw
+	/// the selected ones last and the current item's the very last, so its box lies over any box it overlaps; a box too small to draw
 	/// (<see cref="ProbeGraph.MinVisibleWidth"/> × <see cref="ProbeGraph.MinVisibleHeight"/>) is left out.
 	/// <see cref="DrawBoxes"/> draws by it and <see cref="ArrangeOverride"/> clips the thumbs by it.
 	/// </summary>
@@ -415,9 +458,8 @@ public sealed class ProbeGraphOverlay : Panel
 	/// <param name="size">This element's size (see <see cref="ScaleFor"/>).</param>
 	private List<(Probe Probe, Rect Box)> DrawnBoxes(Project project, Size size)
 	{
-		object? selected = SelectedItem;
 		var boxes = new List<(Probe, Rect)>();
-		foreach (Probe probe in project.Probes.OrderBy(probe => ReferenceEquals(probe, selected)))
+		foreach (Probe probe in project.Probes.OrderBy(DrawOrder))
 		{
 			if (IsShown(probe) && BoxOf(probe, size) is { Width: >= ProbeGraph.MinVisibleWidth, Height: >= ProbeGraph.MinVisibleHeight } box)
 			{
@@ -527,7 +569,6 @@ public sealed class ProbeGraphOverlay : Panel
 		// the family the overlay inherits, the controls' own (ProbeGraphDrawing says why)
 		FontFamily family = TextElement.GetFontFamily(this);
 		ProbeGraphStyle style = _style ??= ProbeGraphDrawing.MakeStyle(family);
-		object? selected = SelectedItem;
 		foreach ((Probe probe, Rect box) in DrawnBoxes(project, size))
 		{
 			ProbeGraphData data = DataFor(probe, out int totalSteps);
@@ -536,7 +577,7 @@ public sealed class ProbeGraphOverlay : Panel
 			{
 				continue;
 			}
-			IPen? border = ReferenceEquals(probe, selected) && AccentBrush is { } accent ? new Pen(accent, ProbeGraphDrawing.Hairline(scale)) : null;
+			IPen? border = IsSelected(probe) && AccentBrush is { } accent ? new Pen(accent, ProbeGraphDrawing.Hairline(scale)) : null;
 			using (context.PushTransform(Matrix.CreateTranslation(box.X, box.Y)))
 			{
 				ProbeGraphDrawing.DrawBox(context, layout, border, scale, family);
