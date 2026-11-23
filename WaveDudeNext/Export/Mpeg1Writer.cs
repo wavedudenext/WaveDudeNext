@@ -41,7 +41,7 @@ public sealed class Mpeg1Writer : IFrameSink
 	/// <summary>Largest PES payload: the packet length field is 16 bits and the header needs a few bytes.</summary>
 	private const int PesPayloadLimit = 65000;
 
-	private readonly FileStream _stream;
+	private readonly Stream _stream;
 	private readonly YuvPlanes _planes;
 	private readonly BitWriter _bits = new(1 << 20);
 	private readonly BitWriter[] _slices;
@@ -81,7 +81,7 @@ public sealed class Mpeg1Writer : IFrameSink
 			_slices[i] = new BitWriter(Math.Max(4096, _planes.MacroblockColumns * 128));
 		}
 		_sequenceHeader = BuildSequenceHeader();
-		_stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16);
+		_stream = ExportFiles.Create(path);
 	}
 
 	/// <inheritdoc/>

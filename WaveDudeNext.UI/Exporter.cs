@@ -555,7 +555,7 @@ public sealed class Exporter : ObservableObject
 		{
 			return;
 		}
-		string outputs = string.Join(", ", job.Targets.Select(target => target.Output));
+		string outputs = string.Join(", ", job.Targets.Select(target => _dialogs.Shown(target.Output)));
 		switch (job.State)
 		{
 			case ExportState.Completed:

@@ -44,7 +44,7 @@ public sealed class AviWriter : IFrameSink
 	private const uint AviifKeyframe = 0x10;
 	private const int DmlhSize = 248;
 
-	private readonly FileStream _stream;
+	private readonly Stream _stream;
 	private readonly int _rowBytes;
 	private readonly int _frameBytes;
 	private readonly int _chunkBytes;
@@ -101,7 +101,7 @@ public sealed class AviWriter : IFrameSink
 			entries = needed;
 		}
 		_superEntries = entries;
-		_stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16);
+		_stream = ExportFiles.Create(path);
 		_stream.SetLength(_headerBytes);
 		_stream.Position = _headerBytes;
 		BeginSegment();

@@ -221,7 +221,7 @@ public sealed class ExrSink : IFrameSink
 			throw new InvalidOperationException("A still takes one frame.");
 		}
 		string path = _stillPath ?? PathOf(FrameCount);
-		using (var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
+		using (Stream stream = ExportFiles.Create(path, FileShare.None))
 		{
 			ExrWriter.Write(stream, values, Width, Height, "WaveDude Next, frame " + FrameCount.ToString(CultureInfo.InvariantCulture));
 		}

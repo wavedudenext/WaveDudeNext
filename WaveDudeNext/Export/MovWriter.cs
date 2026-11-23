@@ -54,7 +54,7 @@ public sealed class MovWriter : IFrameSink
 	/// <summary>The moov's bytes besides the two per-frame tables (measured on the atoms as written, with slack).</summary>
 	private const int MoovFixedBytes = 1024;
 
-	private readonly FileStream _stream;
+	private readonly Stream _stream;
 	private readonly long _reservedStart;
 	private readonly long _reservedBytes;
 	private readonly long _mdatStart;
@@ -81,7 +81,7 @@ public sealed class MovWriter : IFrameSink
 		_row = new byte[width * 3];
 		// the worst case of a row: every pixel a literal in runs of 127, plus the codes, plus the skip and the end
 		_frame = new byte[6 + height * (width * 3 + width / 127 + 4)];
-		_stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16);
+		_stream = ExportFiles.Create(path);
 		// ftyp, then the mdat with a 64-bit size patched at Close
 		_stream.Write(Atom("ftyp", [.. "qt  "u8, 0, 0, 2, 0, .. "qt  "u8]));
 		_reservedStart = _stream.Position;

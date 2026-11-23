@@ -59,4 +59,11 @@ public interface IExportDialogs
 
 	/// <summary>Asks whether a sequence may go into <paramref name="folder"/>, which exists and holds files; the task completes with true for yes.</summary>
 	Task<bool> AskToReplaceFolderAsync(string folder);
+
+	/// <summary>
+	/// How an export's file or folder at <paramref name="path"/> is named to the user, in the lines that reach the
+	/// status bar: the path itself where a pick is a path. Where it is not (a browser's picked file has a name and
+	/// no path, 2026-11-15) the pick's path only stands for the file, and this is the name the user gave it.
+	/// </summary>
+	string Shown(string path) => path;
 }

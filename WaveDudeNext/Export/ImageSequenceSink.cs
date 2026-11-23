@@ -186,7 +186,7 @@ public sealed class ImageSequenceSink : IFrameSink
 
 	private void Encode(Action<Stream, ReadOnlyMemory<int>> encoder, int index, int[] frame)
 	{
-		using var stream = new FileStream(PathOf(index), FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16);
+		using Stream stream = ExportFiles.Create(PathOf(index));
 		encoder(stream, frame);
 	}
 

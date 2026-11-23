@@ -33,7 +33,7 @@ namespace LibraryCheck;
 // ffmpeg found on the PATH, skipped when there is none) reads back with the right frame count and, for
 // the lossless ones, the same pixels; the PNG is also decoded in-house. The job renders a run's frames
 // into two sinks, calls the decoration per frame and ends in the right state.
-internal static class ExportChecks
+internal static partial class ExportChecks
 {
 	private static readonly string? Ffmpeg = FindFfmpeg();
 
@@ -452,6 +452,7 @@ internal static class ExportChecks
 				"formats: the preferred JPEG encoder is used; the frame it throws on is rewound and written by the in-house encoder");
 
 			CheckJob(check, folder);
+			CheckExportFiles(check, folder);
 		}
 		finally
 		{

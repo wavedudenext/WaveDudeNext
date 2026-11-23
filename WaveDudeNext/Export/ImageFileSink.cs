@@ -62,7 +62,7 @@ public sealed class ImageFileSink : IFrameSink
 			throw new ArgumentException("The frame is smaller than the picture.", nameof(pixels));
 		}
 		int[] frame = pixels[..(Width * Height)].ToArray();
-		using (var stream = new FileStream(Output, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 16))
+		using (Stream stream = ExportFiles.Create(Output))
 		{
 			_encode(stream, frame);
 		}
