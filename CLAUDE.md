@@ -2662,6 +2662,12 @@ library, compiled ahead of time, without threads): every lane operation of the t
 time; the general ones elsewhere): floats to halves 7.9 → 1.4 ns a value on one thread, halves to floats 3.2 → 0.7,
 the values the casts'. Also slow there and not ours to use any more: `Vector.ConvertToInt32` (5.8 ns against 0.4
 for `PackedSimd.ConvertToInt32Saturate`); `Vector.ShiftRightLogical` takes twice the operator `>>>`.
+**The scene outline**: its magnitude is whole numbers throughout now, ⌊√(gx² + gy²) / 4⌋ as the whole root of
+⌊(gx² + gy²) / 16⌋ held to 65535, eight steps of a square, a comparison and a choice in 16-bit lanes
+(`GlowingEdges.WholeRoot`), where it had gone int → float → double → root → float → int, three quarters of the time
+in the conversions there. `library_check`'s byte-for-byte comparison with the pixel-by-pixel formula holds (the
+painted Example 16, noise at Full HD and at 5 × 3), in the browser's build 0 bytes of a Full HD picture of noise
+differ; 162 → 71 ms there on one thread, natively the same as before (11 to 14 ms in `bench-paint`, both).
 
 ## People, name, license
 

@@ -56,9 +56,9 @@ public static class GlowingEdges
 		}
 		// rows are independent: a Full HD canvas took 60 ms on one core (2026-10-19). A row goes through the Sobel in
 		// lanes over all four channels at once (2026-11-04): first the column sums up + 2 mid + down and the differences
-		// down − up as 16-bit integers, then per lane the gradients as ints, their squares summed (at most 2 × 1020²,
-		// exact in single precision), the root, the scale and the clamp in double as the scalar loop had them and the
-		// floor, so the bytes are the same; the alpha lanes ride along and are put back to 255
+		// down − up as 16-bit integers, then per lane the gradients as ints, their squares summed (at most 2 × 1020²),
+		// and the scaled, clamped root in whole numbers (Magnitudes says why those are the scalar loop's bytes); the
+		// alpha lanes ride along and are put back to 255
 		int n = width * 4;
 		Parallel.For(1, height - 1, () => new Rows(n), (int y, ParallelLoopState _, Rows rows) =>
 		{
@@ -124,16 +124,21 @@ public static class GlowingEdges
 	/// <summary>One vector of edge bytes for the positions from <paramref name="x"/> on, alpha 255, from the column sums and differences at x − 4, x and x + 4.</summary>
 	private static Vector<byte> Edges(ReadOnlySpan<ushort> sum, ReadOnlySpan<short> diff, int x)
 	{
-		int half = Vector<ushort>.Count;
-		Vector<float> f0 = Magnitudes(sum, diff, x, out Vector<float> f1);
-		Vector<float> f2 = Magnitudes(sum, diff, x + half, out Vector<float> f3);
-		Vector<short> s0 = Vector.Narrow(Vector.ConvertToInt32(f0), Vector.ConvertToInt32(f1));
-		Vector<short> s1 = Vector.Narrow(Vector.ConvertToInt32(f2), Vector.ConvertToInt32(f3));
-		return Vector.ConditionalSelect(AlphaLanes, AlphaLanes, Vector.AsVectorByte(Vector.Narrow(s0, s1)));
+		Vector<ushort> low = Magnitudes(sum, diff, x);
+		Vector<ushort> high = Magnitudes(sum, diff, x + Vector<ushort>.Count);
+		return Vector.ConditionalSelect(AlphaLanes, AlphaLanes, Vector.Narrow(low, high));
 	}
 
-	/// <summary>The whole magnitudes of the positions from <paramref name="p"/> on, a vector of 16-bit sums wide, as two single vectors.</summary>
-	private static Vector<float> Magnitudes(ReadOnlySpan<ushort> sum, ReadOnlySpan<short> diff, int p, out Vector<float> second)
+	/// <summary>
+	/// The edge values of the positions from <paramref name="p"/> on, a vector of 16-bit sums wide:
+	/// floor(min(255, √(gx² + gy²) × <see cref="Scale"/>)) each, in whole numbers throughout (2026-11-22; in double
+	/// until then, where the browser's compiled build spent three quarters of the outline's time on the conversions
+	/// between the number kinds). With the scale a quarter the value is the whole root of (gx² + gy²) / 16, the
+	/// division whole too: ⌊√s / 4⌋ = ⌊√(s / 16)⌋ = ⌊√⌊s / 16⌋⌋. The double arithmetic of the scalar loop gives the
+	/// same bytes, since a root that is no whole number lies further from one than a double's rounding reaches;
+	/// <c>library_check</c> compares the two on every run.
+	/// </summary>
+	private static Vector<ushort> Magnitudes(ReadOnlySpan<ushort> sum, ReadOnlySpan<short> diff, int p)
 	{
 		// gx: the sum a pixel to the right less the sum a pixel to the left; gy: the difference a pixel to the left, twice here, a pixel to the right
 		Vector.Widen(new Vector<ushort>(sum.Slice(p + 4)), out Vector<uint> r0, out Vector<uint> r1);
@@ -141,18 +146,32 @@ public static class GlowingEdges
 		Vector.Widen(new Vector<short>(diff.Slice(p - 4)), out Vector<int> a0, out Vector<int> a1);
 		Vector.Widen(new Vector<short>(diff.Slice(p)), out Vector<int> b0, out Vector<int> b1);
 		Vector.Widen(new Vector<short>(diff.Slice(p + 4)), out Vector<int> c0, out Vector<int> c1);
-		second = Magnitude(Vector.AsVectorInt32(r1) - Vector.AsVectorInt32(l1), a1 + b1 + b1 + c1);
-		return Magnitude(Vector.AsVectorInt32(r0) - Vector.AsVectorInt32(l0), a0 + b0 + b0 + c0);
+		Vector<int> t0 = Sixteenth(Vector.AsVectorInt32(r0) - Vector.AsVectorInt32(l0), a0 + b0 + b0 + c0);
+		Vector<int> t1 = Sixteenth(Vector.AsVectorInt32(r1) - Vector.AsVectorInt32(l1), a1 + b1 + b1 + c1);
+		// each at most 65535, so the 16 bits kept are the value
+		return WholeRoot(Vector.AsVectorUInt16(Vector.Narrow(t0, t1)));
 	}
 
-	/// <summary>floor(min(255, √(gx² + gy²) × <see cref="Scale"/>)) per lane: the squares' sum exact in single precision, the rest in double.</summary>
-	private static Vector<float> Magnitude(Vector<int> gx, Vector<int> gy)
+	/// <summary>
+	/// ⌊(gx² + gy²) / 16⌋ per lane, held to 65535: the sum is at most 2 × 1020², and from 255² on the root is 255
+	/// whatever the value, so the 16 bits the root is taken of lose nothing.
+	/// </summary>
+	private static Vector<int> Sixteenth(Vector<int> gx, Vector<int> gy) => Vector.Min((gx * gx + gy * gy) >>> 4, new Vector<int>(65535));
+
+	/// <summary>
+	/// The whole root of each 16-bit lane, at most 255: bit by bit from the top, a bit staying where the square of
+	/// the root with it does not exceed the value (a square of at most 255² fits the lane).
+	/// </summary>
+	private static Vector<ushort> WholeRoot(Vector<ushort> value)
 	{
-		Vector.Widen(Vector.ConvertToSingle(gx * gx + gy * gy), out Vector<double> low, out Vector<double> high);
-		return Vector.Narrow(Clamp(low), Clamp(high));
+		Vector<ushort> root = Vector<ushort>.Zero;
+		for (int bit = 128; bit > 0; bit >>= 1)
+		{
+			Vector<ushort> candidate = root | new Vector<ushort>((ushort)bit);
+			root = Vector.ConditionalSelect(Vector.GreaterThanOrEqual(value, candidate * candidate), candidate, root);
+		}
+		return root;
 	}
-
-	private static Vector<double> Clamp(Vector<double> squares) => Vector.Floor(Vector.Min(Vector.SquareRoot(squares) * Scale, new Vector<double>(255.0)));
 
 	/// <summary>A worker's scratch rows for <see cref="Compute"/>: the column sums and differences of a row, all four channels.</summary>
 	private sealed class Rows
