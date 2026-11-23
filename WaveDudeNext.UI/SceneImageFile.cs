@@ -138,6 +138,34 @@ public sealed class SceneImageFile(ProjectDocument document, IImageDecoder decod
 	}
 
 	/// <summary>
+	/// Embeds an image from its file's bytes, where the file itself is out of reach (2026-11-15, the browser head: a
+	/// picked file reaches a page as a name and bytes, without a path). As <see cref="TryEmbed(string)"/>, except that
+	/// the scene knows the image by its name alone: there is no file to follow.
+	/// </summary>
+	/// <param name="bytes">The image file's bytes.</param>
+	/// <param name="name">The file's name.</param>
+	/// <returns>Whether the image was embedded.</returns>
+	public bool TryEmbed(byte[] bytes, string name)
+	{
+		try
+		{
+			ScenePixels pixels = decoder.Decode(bytes);
+			Scene scene = Project.Scene;
+			scene.ImageData = bytes;
+			scene.Image = Path.GetFileName(name);
+			scene.ImagePath = "";
+			scene.Mode = SceneMode.Image;
+			Logger.Info("Scene image '{Name}' embedded: {Width}×{Height}, {Size} KB", scene.Image, pixels.Width, pixels.Height, Math.Max(1, bytes.Length / 1024));
+			return true;
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or FormatException)
+		{
+			Logger.Error(ex, "The image could not be loaded: {Message}", ex.Message);
+			return false;
+		}
+	}
+
+	/// <summary>
 	/// Drops the scene image (2026-10-26, Jeroen's report: there was no way to drop an image): the canvas takes the
 	/// image's size, so nothing moves, then the scene drops the name, the path and the embedded bytes and is a blank canvas.
 	/// </summary>

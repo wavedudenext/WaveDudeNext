@@ -279,6 +279,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="ExportDialogTitleProbeCsv">Export the probe data</s:String>
 	<s:String x:Key="ExportDialogFilterCsv">CSV file (*.csv)|*.csv</s:String>
 	<s:String x:Key="ExportFolderExistsFormat">The folder {0} exists and holds files. Replace them?</s:String>
+	<s:String x:Key="ExportNeedsFolder">This export writes several files, which need a folder. Choose the folder now?</s:String>
 	<s:String x:Key="ExportError">The export failed.</s:String>
 	<s:String x:Key="ExportMp4NeedsFfmpeg">MP4 export needs the program ffmpeg, which was not found on this computer. Install ffmpeg (on Linux, the package of that name) and export again.</s:String>
 	<s:String x:Key="ExportMp4NeedsEncoder">The ffmpeg on this computer has no H.264 encoder. Install an ffmpeg that has libx264 or libopenh264 and export again.</s:String>

@@ -30,6 +30,7 @@ using WaveDudeNext.App.Localization;
 using WaveDudeNext.App.Logging;
 using WaveDudeNext.App.Platform;
 using WaveDudeNext.App.Theming;
+using WaveDudeNext.Rendering;
 using WaveDudeNext.Runs;
 using WaveDudeNext.UI;
 
@@ -62,7 +63,14 @@ public partial class MainView : UserControl
 	private readonly ObjectClipboard _clipboard;
 	private readonly UndoHistory _history;
 	private readonly ExportPaths _exportPaths;
+	private readonly AvaloniaExportDialogs _exportDialogs;
 	private readonly EditBoundaries _boundaries;
+	/// <summary>
+	/// The picked file the open project was read from or last written to, where files have no paths (the browser head):
+	/// File > Save writes there again, as it writes to the document's file name on a desktop. Null for a project with a
+	/// path, and for one that came from no file.
+	/// </summary>
+	private IStorageFile? _projectFile;
 	private readonly List<KeyBinding> _keyBindings = [];
 	private TopLevel? _topLevel;
 
@@ -93,11 +101,17 @@ public partial class MainView : UserControl
 		};
 		RunHost.RunStateChanged += (_, _) => Commands.Requery();
 		Live = new LivePreview(Document, RunHost, Preview, Busy, SceneComposer, new AvaloniaSynchronizationContext(DispatcherPriority.Normal));
-		Exporter = new Exporter(Document, RunHost, Preview, Busy, SceneComposer, _exportPaths, new AvaloniaExportDialogs(this), new SkiaFrameDecorators(), new AvaloniaSynchronizationContext(DispatcherPriority.Normal));
+		_exportDialogs = new AvaloniaExportDialogs(this);
+		Exporter = new Exporter(Document, RunHost, Preview, Busy, SceneComposer, _exportPaths, _exportDialogs, new SkiaFrameDecorators(), new AvaloniaSynchronizationContext(DispatcherPriority.Normal));
 		Exporter.PropertyChanged += (_, _) => Commands.Requery();
 		Exporter.Failed += OnExportFailed;
-		// the auto re-run held back during the export may be due now
-		Exporter.Finished += (_, _) => Live.RunFinished();
+		// the auto re-run held back during the export may be due now; and what the export wrote for a picked file
+		// without a path (the browser head) goes into that file
+		Exporter.Finished += (_, _) =>
+		{
+			Live.RunFinished();
+			Fire(DeliverExportAsync());
+		};
 		AutoBrightness = new AutoBrightness(Document, RunHost, Preview, Busy, SceneComposer, new AvaloniaSynchronizationContext(DispatcherPriority.Normal));
 		AutoBrightness.PropertyChanged += (_, _) => Commands.Requery();
 		// a fit that computed its frame arrived after the command that asked for it: an edit complete in itself
@@ -270,6 +284,7 @@ public partial class MainView : UserControl
 	/// <summary>A new project: the selection, the scene and the export paths start over, the undo history with it, and the live rules last, so their first frame follows the new scene.</summary>
 	private void OnProjectReplaced()
 	{
+		_projectFile = null;
 		Selection.Items.Clear();
 		SceneComposer.Reset();
 		_exportPaths.Forget();
@@ -393,32 +408,49 @@ public partial class MainView : UserControl
 	/// <summary>The file pickers of the top level the view is in; null before it is shown.</summary>
 	private IStorageProvider? Storage => TopLevel.GetTopLevel(this)?.StorageProvider;
 
-	/// <summary>Picks one file to open; null when cancelled. A null title leaves the platform's own.</summary>
-	private async Task<string?> PickOpenFileAsync(string? title, string filter, string? startFolder)
+	/// <summary>
+	/// Picks one file to open; null when cancelled. A null title leaves the platform's own. The file has a path on a
+	/// desktop; a browser hands a page the file's name and contents alone (<see cref="OpenPickedAsync"/>).
+	/// </summary>
+	private async Task<IStorageFile?> PickOpenFileAsync(string? title, IReadOnlyList<FilePickerFileType> types, string? startFolder)
 	{
 		if (Storage is not { } storage)
 		{
 			return null;
 		}
-		IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+		IReadOnlyList<IStorageFile> files = await PickedFiles.OpenAsync(storage, new FilePickerOpenOptions
 		{
 			Title = title,
 			AllowMultiple = false,
-			FileTypeFilter = AvaloniaExportDialogs.FileTypesFrom(filter),
+			FileTypeFilter = types,
 			SuggestedStartLocation = await StartFolderAsync(storage, startFolder),
 		});
-		return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+		return files.Count > 0 ? files[0] : null;
 	}
 
-	/// <summary>Picks a file to write; null when cancelled.</summary>
-	private async Task<string?> PickSaveFileAsync(string? title, string filter, string suggestedName, string? defaultExtension, string? startFolder)
+	/// <summary>
+	/// The file types File > Open offers: the string table's list (projects, Wave Dude 2D projects, XML files, all
+	/// files); in a browser the projects' entry alone, a page reading project files alone so far
+	/// (<see cref="OpenPickedAsync"/>).
+	/// </summary>
+	private IReadOnlyList<FilePickerFileType> OpenFileTypes()
+	{
+		IReadOnlyList<FilePickerFileType> types = PickedFiles.TypesFrom(Text("OpenFileDialogFilter"));
+		return OperatingSystem.IsBrowser() && types.Count > 0 ? [types[0]] : types;
+	}
+
+	/// <summary>
+	/// Picks a file to write; null when cancelled. The file has a path on a desktop; in a browser it is written
+	/// through the picked file itself (<see cref="PickedFiles"/>).
+	/// </summary>
+	private async Task<IStorageFile?> PickSaveFileAsync(string? title, string filter, string suggestedName, string? defaultExtension, string? startFolder)
 	{
 		if (Storage is not { } storage)
 		{
 			return null;
 		}
-		IReadOnlyList<FilePickerFileType> types = AvaloniaExportDialogs.FileTypesFrom(filter);
-		IStorageFile? file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
+		IReadOnlyList<FilePickerFileType> types = PickedFiles.TypesFrom(filter);
+		return await PickedFiles.SaveAsync(storage, new FilePickerSaveOptions
 		{
 			Title = title,
 			SuggestedFileName = suggestedName,
@@ -428,7 +460,6 @@ public partial class MainView : UserControl
 			ShowOverwritePrompt = true,
 			SuggestedStartLocation = await StartFolderAsync(storage, startFolder),
 		});
-		return file?.TryGetLocalPath();
 	}
 
 	private static async Task<IStorageFolder?> StartFolderAsync(IStorageProvider storage, string? folder) =>
@@ -454,10 +485,56 @@ public partial class MainView : UserControl
 
 	private async Task OpenAsync()
 	{
-		string? file = await PickOpenFileAsync(null, Text("OpenFileDialogFilter"), Document.Folder);
+		IStorageFile? file = await PickOpenFileAsync(null, OpenFileTypes(), Document.Folder);
 		if (file != null && await ConfirmDiscardAsync())
 		{
-			await OpenFileAsync(file);
+			await OpenPickedAsync(file);
+		}
+	}
+
+	/// <summary>
+	/// Opens a file the user picked or dropped: by its path where it has one (a desktop), as any kind the document
+	/// reads; else from its contents (2026-11-15, the user's choice for the browser head, whose picker and drops hand a
+	/// page a file's name and bytes and no path), which so far reads project files alone: the project is unsaved then,
+	/// its file's name suggested, as an example's is. An error is shown.
+	/// </summary>
+	private async Task OpenPickedAsync(IStorageFile file)
+	{
+		if (file.TryGetLocalPath() is { } path)
+		{
+			await OpenFileAsync(path);
+			return;
+		}
+		await OpenContentsAsync(file.Name, () => PickedFiles.ReadAsync(file), file);
+	}
+
+	/// <summary>
+	/// Opens a project from a file's name and contents, read by <paramref name="read"/> only once the name has passed:
+	/// <see cref="OpenPickedAsync"/>'s second half, and a dropped file's way in where a drop is read by the head
+	/// itself (<see cref="App.PageDrops"/>). <paramref name="file"/> is the picked file File > Save writes back
+	/// into; null for a dropped one, which has no such place, so its project is saved through the dialog.
+	/// </summary>
+	private async Task OpenContentsAsync(string name, Func<Task<byte[]>> read, IStorageFile? file)
+	{
+		Exception? error;
+		try
+		{
+			// the bytes first: the project's reader reads as it goes, and a browser's stream answers only asynchronously
+			if (Document.TryOpen(await read(), name, out error) && !ProjectDocument.IsColorSchemeName(name))
+			{
+				// File > Save writes back into this file; a colour scheme's file went into the open project, whose file stays
+				_projectFile = file;
+			}
+		}
+		catch (Exception ex)
+		{
+			// whatever the platform refuses the file with (a browser's errors are its own kind): shown, not fatal
+			Logger.Error(ex, "Error while reading '{Name}'", name);
+			error = ex;
+		}
+		if (error != null)
+		{
+			await ShowErrorAsync(string.Format(Text("OpenError"), name), error);
 		}
 	}
 
@@ -477,13 +554,17 @@ public partial class MainView : UserControl
 		}
 	}
 
-	/// <summary>Save, or Save As for a project without a file; false when the user cancelled or the save failed.</summary>
-	private Task<bool> SaveAsync() => Document.Filename != null ? SaveFileAsync(Document.Filename) : SaveAsAsync();
+	/// <summary>
+	/// Save, or Save As for a project without a file; false when the user cancelled or the save failed. The file is
+	/// the document's path on a desktop, and where files have no paths the picked file the project came from or was
+	/// last saved to.
+	/// </summary>
+	private Task<bool> SaveAsync() => Document.Filename != null ? SaveFileAsync(Document.Filename) : _projectFile != null ? SaveToAsync(_projectFile) : SaveAsAsync();
 
 	private async Task<bool> SaveAsAsync()
 	{
-		string? file = await PickSaveFileAsync(null, Text("SaveFileDialogFilter"), Document.Filename != null ? Path.GetFileName(Document.Filename) : Document.SuggestedFileName ?? "", ProjectDocument.Extension, Document.Folder);
-		return file != null && await SaveFileAsync(file);
+		IStorageFile? file = await PickSaveFileAsync(null, Text("SaveFileDialogFilter"), Document.Filename != null ? Path.GetFileName(Document.Filename) : Document.SuggestedFileName ?? "", ProjectDocument.Extension, Document.Folder);
+		return file != null && (file.TryGetLocalPath() is { } path ? await SaveFileAsync(path) : await SaveToAsync(file));
 	}
 
 	private async Task<bool> SaveFileAsync(string fileName)
@@ -496,6 +577,50 @@ public partial class MainView : UserControl
 		return false;
 	}
 
+	/// <summary>
+	/// Saves the project into a picked file that has no path (the browser head, 2026-11-15): the project's bytes are
+	/// written through the file itself, and the document is saved under the file's name, which File > Save then writes
+	/// to again. An error is shown.
+	/// </summary>
+	private async Task<bool> SaveToAsync(IStorageFile file)
+	{
+		string name = file.Name;
+		if (Document.TryGetContents(out byte[]? contents, out Exception? error))
+		{
+			try
+			{
+				await PickedFiles.WriteAsync(file, contents);
+				Document.ContentsSaved(name);
+				_projectFile = file;
+				return true;
+			}
+			catch (Exception ex)
+			{
+				// whatever the platform refuses the file with (a browser's errors are its own kind): shown, not fatal
+				Logger.Error(ex, "Error while saving '{Name}'", name);
+				error = ex;
+			}
+		}
+		await ShowErrorAsync(string.Format(Text("SaveError"), name), error);
+		return false;
+	}
+
+	/// <summary>An export has ended: what it wrote for a picked file without a path goes into that file (<see cref="AvaloniaExportDialogs.DeliverAsync"/>); an error is shown.</summary>
+	private async Task DeliverExportAsync()
+	{
+		if (await _exportDialogs.DeliverAsync() is { } error)
+		{
+			await ShowErrorAsync(Text("ExportError"), error);
+		}
+	}
+
+	/// <summary>A probe's data as CSV: the export, which writes the file itself, and then the file's way to where the user picked.</summary>
+	private async Task ExportProbeAsync(WaveDudeNext.Model.Probe probe)
+	{
+		await Exporter.ExportProbeAsync(probe);
+		await DeliverExportAsync();
+	}
+
 	private async Task CloseProjectAsync()
 	{
 		if (await ConfirmDiscardAsync())
@@ -506,10 +631,23 @@ public partial class MainView : UserControl
 
 	private async Task BrowseSceneImageAsync()
 	{
-		string? file = await PickOpenFileAsync(Text("TipBrowseSceneImage"), Text("SceneImageFilter"), Document.Folder);
-		if (file != null)
+		IStorageFile? picked = await PickOpenFileAsync(Text("TipBrowseSceneImage"), PickedFiles.TypesFrom(Text("SceneImageFilter")), Document.Folder);
+		if (picked?.TryGetLocalPath() is { } file)
 		{
 			SceneImage.TryEmbed(file);
+		}
+		else if (picked != null)
+		{
+			// a file without a path (the browser head): embedded from its bytes, known by its name alone
+			try
+			{
+				SceneImage.TryEmbed(await PickedFiles.ReadAsync(picked), picked.Name);
+			}
+			catch (Exception ex)
+			{
+				// whatever the platform refuses the file with (a browser's errors are its own kind): logged, not fatal
+				Logger.Error(ex, "The image could not be loaded: {Message}", ex.Message);
+			}
 		}
 	}
 
@@ -522,15 +660,35 @@ public partial class MainView : UserControl
 		string extension = SceneImage.SaveExtension;
 		// the embedded file's own type; an unknown one gets the picker's list
 		string filter = extension.Length > 0 ? string.Format(Text("SceneImageSaveFilterFormat"), extension) : Text("SceneImageFilter");
-		string? file = await PickSaveFileAsync(Text("TipSaveSceneImage"), filter, SceneImage.SaveFileName, extension.Length > 0 ? extension : null, SceneImage.SaveFolder);
-		if (file == null)
+		IStorageFile? picked = await PickSaveFileAsync(Text("TipSaveSceneImage"), filter, SceneImage.SaveFileName, extension.Length > 0 ? extension : null, SceneImage.SaveFolder);
+		if (picked == null)
 		{
 			Logger.Debug("Scene image save cancelled in the Save dialog");
 			return;
 		}
-		if (!SceneImage.TrySave(file, out Exception? error) && error != null)
+		Exception? error = null;
+		if (picked.TryGetLocalPath() is { } file)
 		{
-			await ShowErrorAsync(string.Format(Text("SceneImageSaveError"), file), error);
+			SceneImage.TrySave(file, out error);
+		}
+		else if (Document.Project.Scene.ImageData is { } bytes)
+		{
+			// a file without a path (the browser head): the embedded bytes written through the picked file itself
+			try
+			{
+				await PickedFiles.WriteAsync(picked, bytes);
+				Logger.Info("Scene image saved: {Size} KB to '{Name}'", Math.Max(1, bytes.Length / 1024), picked.Name);
+			}
+			catch (Exception ex)
+			{
+				// whatever the platform refuses the file with (a browser's errors are its own kind): shown, not fatal
+				Logger.Error(ex, "The scene image could not be saved: {Message}", ex.Message);
+				error = ex;
+			}
+		}
+		if (error != null)
+		{
+			await ShowErrorAsync(string.Format(Text("SceneImageSaveError"), picked.TryGetLocalPath() ?? picked.Name), error);
 		}
 	}
 
@@ -547,19 +705,33 @@ public partial class MainView : UserControl
 	}
 
 	/// <summary>
-	/// A file dropped anywhere on the view opens it (after the save question), as the WPF window does; not while a
-	/// dialog is over the view, which has the application to itself.
+	/// A file dropped anywhere on the view opens it (after the save question), as the WPF window does: the first with a
+	/// path on a desktop; a file without one, the first, from its contents (<see cref="OpenPickedAsync"/>). Not under
+	/// a dialog over the view, which has the application to itself.
 	/// </summary>
 	private async void OnDrop(object? sender, DragEventArgs e)
 	{
+		List<IStorageItem>? items = e.DataTransfer.TryGetFiles()?.ToList();
+		string formats = string.Join(", ", e.DataTransfer.Formats);
+		Logger.Debug("Drop on the view: {Files} file(s), formats: {Formats}{Dialog}", items?.Count ?? 0, formats.Length > 0 ? formats : "none", dialogOverlay.IsOpen ? "; ignored under a dialog" : "");
 		if (dialogOverlay.IsOpen)
 		{
 			return;
 		}
-		string? file = e.DataTransfer.TryGetFiles()?.Select(item => item.TryGetLocalPath()).FirstOrDefault(path => path != null);
-		if (file != null && await ConfirmDiscardAsync())
+		if (items is not { Count: > 0 })
 		{
-			await OpenFileAsync(file);
+			return;
+		}
+		if (items.Select(item => item.TryGetLocalPath()).FirstOrDefault(path => path != null) is { } file)
+		{
+			if (await ConfirmDiscardAsync())
+			{
+				await OpenFileAsync(file);
+			}
+		}
+		else if (items.OfType<IStorageFile>().FirstOrDefault() is { } contents && await ConfirmDiscardAsync())
+		{
+			await OpenPickedAsync(contents);
 		}
 	}
 

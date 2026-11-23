@@ -34,6 +34,8 @@ public enum OpenedKind
 	ImportedProject,
 	/// <summary>A shipped example: unsaved, its own file name suggested.</summary>
 	Example,
+	/// <summary>A project file's contents, the file itself out of reach (one picked or dropped in a browser, which hands a page no path): unsaved, the file's name suggested.</summary>
+	ProjectContents,
 	/// <summary>A colour scheme file, added to the project that is open, which stays.</summary>
 	ColorScheme,
 }
@@ -68,6 +70,13 @@ public sealed class ProjectDocument : ObservableObject
 {
 	/// <summary>Extension of project files written by <see cref="TrySave"/>.</summary>
 	public const string Extension = ".wdproj";
+
+	/// <summary>
+	/// The media type that stands for a project file where a platform asks for one beside the extension (a browser's
+	/// file picker lists a type only under a media type): none is registered for the format, so this is a private one,
+	/// written into no file.
+	/// </summary>
+	public const string MimeType = "application/x-wavedudenext-project";
 
 	/// <summary>Files the recent list keeps.</summary>
 	private const int RecentFileCount = 10;
@@ -202,6 +211,49 @@ public sealed class ProjectDocument : ObservableObject
 	}
 
 	/// <summary>
+	/// Opens a project from its file's contents, where the file itself is out of reach (2026-11-15, for the browser
+	/// head: a file the user picks or drops reaches a page as a name and a stream of bytes, without a path): it becomes
+	/// the open project, unsaved and without a file, the file's name suggested when it is saved, as an example is; the
+	/// recent list, which holds paths, does not hear of it. On a failure the open project stays as it is.
+	/// <para>
+	/// A colour scheme file's contents (<c>.wdscheme</c>, or the author's <c>.json</c>) are added to the open
+	/// project's own schemes, as the file is by its path (2026-11-22; until then a scheme file dropped on the browser
+	/// head was refused). A project of Wave Dude 2D cannot come this way: its configuration names files beside it.
+	/// </para>
+	/// </summary>
+	/// <param name="contents">The file's bytes.</param>
+	/// <param name="name">The file's name, for the title, the log and a later save; its extension tells a colour scheme.</param>
+	/// <param name="error">What went wrong, already logged; for the caller to show.</param>
+	/// <returns>Whether the project was opened, or the scheme added.</returns>
+	public bool TryOpen(byte[] contents, string name, [NotNullWhen(false)] out Exception? error)
+	{
+		if (IsColorSchemeName(name))
+		{
+			return TryAddColorScheme(contents, name, out error);
+		}
+		try
+		{
+			Project loaded;
+			using (var stream = new MemoryStream(contents, writable: false))
+			{
+				loaded = Project.Load(stream);
+			}
+			Replace(loaded, null, name);
+			Logger.Info("Opened '{Name}' from its contents ({Bytes} bytes; no path, so the project is unsaved)", name, contents.Length);
+			Opened?.Invoke(this, new OpenedEventArgs(OpenedKind.ProjectContents, loaded));
+			error = null;
+			return true;
+		}
+		catch (Exception ex)
+		{
+			// the file's text goes into the log under the error (2026-11-03, the user's rule); the caller shows the error alone
+			Logger.Error(new UnreadableFileException(name, System.Text.Encoding.UTF8.GetString(contents), ex), "Error while opening '{Name}'", name);
+			error = ex;
+			return false;
+		}
+	}
+
+	/// <summary>
 	/// One of the shipped examples (2026-10-29): the embedded project becomes the open project, unsaved and without a file,
 	/// its own file name suggested when it is saved; on a failure the open project stays as it is.
 	/// </summary>
@@ -262,6 +314,46 @@ public sealed class ProjectDocument : ObservableObject
 	}
 
 	/// <summary>
+	/// The open project as the bytes of its file, for an application that writes them itself where there is no path to
+	/// write to (2026-11-15, the browser head: a picked file is written through a stream of its own, which answers
+	/// later). The document is not saved by this: <see cref="ContentsSaved"/> follows when the bytes are written.
+	/// </summary>
+	/// <param name="contents">The file's bytes.</param>
+	/// <param name="error">What went wrong, already logged; for the caller to show.</param>
+	/// <returns>Whether the project could be written.</returns>
+	public bool TryGetContents([NotNullWhen(true)] out byte[]? contents, [NotNullWhen(false)] out Exception? error)
+	{
+		try
+		{
+			using var stream = new MemoryStream();
+			_project.Save(stream);
+			contents = stream.ToArray();
+			error = null;
+			return true;
+		}
+		catch (Exception ex)
+		{
+			Logger.Error(ex, "Error while writing the project");
+			contents = null;
+			error = ex;
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// The bytes <see cref="TryGetContents"/> gave are written, to a file named <paramref name="name"/> that has no path:
+	/// the document is saved, as after <see cref="TrySave"/>, except that it has no file of its own; the name is the
+	/// suggested one, which the title shows, and the recent list, which holds paths, does not hear of it.
+	/// </summary>
+	public void ContentsSaved(string name)
+	{
+		SuggestedFileName = name;
+		Saved?.Invoke(this, EventArgs.Empty);
+		IsDirty = false;
+		Logger.Info("Saved '{Name}' through the file picked for it (no path)", name);
+	}
+
+	/// <summary>
 	/// A project of the author's program (its <c>configuration.json</c>) becomes a new, unsaved project (2026-10-14): the
 	/// scene image is embedded, what could not be carried over exactly is logged as a warning, and a <c>.wdproj</c> named
 	/// after the project beside the original is suggested for saving it.
@@ -307,6 +399,48 @@ public sealed class ProjectDocument : ObservableObject
 		{
 			// the file's text goes into the log under the error (2026-11-03, the user's rule); the caller shows the error alone
 			Logger.Error(new UnreadableFileException(fileName, ex), "Error while opening '{Path}'", fileName);
+			error = ex;
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Whether a file of this name, opened from its contents, is taken for a colour scheme: the program's
+	/// <c>.wdscheme</c>, and a <c>.json</c>, which without the files beside it can only be the author's scheme format.
+	/// </summary>
+	public static bool IsColorSchemeName(string name)
+	{
+		string extension = Path.GetExtension(name);
+		return string.Equals(extension, ColorSchemeStore.XmlExtension, StringComparison.OrdinalIgnoreCase) || string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase);
+	}
+
+	/// <summary>A scheme file's contents are added to the open project's own schemes, as <see cref="TryAddColorScheme(string, out Exception?)"/> adds the file.</summary>
+	private bool TryAddColorScheme(byte[] contents, string name, [NotNullWhen(false)] out Exception? error)
+	{
+		try
+		{
+			string fallbackName = Path.GetFileNameWithoutExtension(name);
+			ColorScheme scheme;
+			if (string.Equals(Path.GetExtension(name), ".json", StringComparison.OrdinalIgnoreCase))
+			{
+				scheme = ColorSchemeStore.Parse(System.Text.Encoding.UTF8.GetString(contents), fallbackName);
+			}
+			else
+			{
+				using var stream = new MemoryStream(contents, writable: false);
+				scheme = ColorSchemeStore.LoadXml(stream, fallbackName);
+			}
+			scheme.FilePath = "";
+			_project.AddColorScheme(scheme);
+			Logger.Info("Colour scheme '{Name}' loaded from the contents of '{File}' into the project", scheme.Name, name);
+			Opened?.Invoke(this, new OpenedEventArgs(OpenedKind.ColorScheme, scheme));
+			error = null;
+			return true;
+		}
+		catch (Exception ex)
+		{
+			// the file's text goes into the log under the error (2026-11-03, the user's rule); the caller shows the error alone
+			Logger.Error(new UnreadableFileException(name, System.Text.Encoding.UTF8.GetString(contents), ex), "Error while opening '{Name}'", name);
 			error = ex;
 			return false;
 		}

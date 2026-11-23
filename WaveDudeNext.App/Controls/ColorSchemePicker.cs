@@ -320,23 +320,30 @@ public sealed class ColorSchemePicker : ComboBox
 		{
 			return;
 		}
-		IReadOnlyList<IStorageFile> files;
-		try
+		// a dialog the platform will not show comes back as nothing picked, with its line in the log (PickedFiles)
+		IReadOnlyList<IStorageFile> files = await Platform.PickedFiles.OpenAsync(storage, new FilePickerOpenOptions
 		{
-			files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
-			{
-				Title = Resource("PickerBrowse", "Load from file").TrimEnd('…'),
-				AllowMultiple = false,
-				FileTypeFilter = ParseFilter(Resource("ColorSchemeFilter", "Colour schemes (*.wdscheme;*.json)|*.wdscheme;*.json|All files (*.*)|*.*")),
-			});
-		}
-		catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException)
+			Title = Resource("PickerBrowse", "Load from file").TrimEnd('…'),
+			AllowMultiple = false,
+			// a browser's dialog lists a type only under a media type, and without its pattern in the name (PickedFiles)
+			FileTypeFilter = OperatingSystem.IsBrowser()
+				? Platform.PickedFiles.TypesFrom(Resource("ColorSchemeFilter", "Colour schemes (*.wdscheme;*.json)|*.wdscheme;*.json|All files (*.*)|*.*"))
+				: ParseFilter(Resource("ColorSchemeFilter", "Colour schemes (*.wdscheme;*.json)|*.wdscheme;*.json|All files (*.*)|*.*")),
+		});
+		if (files.Count == 0)
 		{
-			Logger.Error(ex, "The file picker could not be opened");
 			return;
 		}
-		if (files.Count == 0 || files[0].TryGetLocalPath() is not { } path)
+		// the file's own path, or, for a file without one (the browser head), a copy the loader can read, deleted afterwards
+		string path;
+		bool isCopy;
+		try
 		{
+			(path, isCopy) = await Platform.PickedFiles.LocalPathAsync(files[0]);
+		}
+		catch (Exception ex)
+		{
+			Logger.Error(ex, "The colour scheme file could not be read: {Message}", ex.Message);
 			return;
 		}
 		try
@@ -359,6 +366,13 @@ public sealed class ColorSchemePicker : ComboBox
 		{
 			// the file's text goes into the log under the error (the user's rule)
 			Logger.Error(new UnreadableFileException(path, ex), "The colour scheme could not be loaded: {Message}", ex.Message);
+		}
+		finally
+		{
+			if (isCopy)
+			{
+				File.Delete(path);
+			}
 		}
 	}
 

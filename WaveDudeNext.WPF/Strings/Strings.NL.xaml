@@ -277,6 +277,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="ExportDialogTitleProbeCsv">Sondegegevens exporteren</s:String>
 	<s:String x:Key="ExportDialogFilterCsv">CSV-bestand (*.csv)|*.csv</s:String>
 	<s:String x:Key="ExportFolderExistsFormat">De map {0} bestaat en bevat bestanden. Vervangen?</s:String>
+	<s:String x:Key="ExportNeedsFolder">Deze export schrijft meerdere bestanden, die een map nodig hebben. De map nu kiezen?</s:String>
 	<s:String x:Key="ExportError">De export is mislukt.</s:String>
 	<s:String x:Key="ExportMp4NeedsFfmpeg">De MP4-export heeft het programma ffmpeg nodig, dat op deze computer niet is gevonden. Installeer ffmpeg (onder Linux het pakket met die naam) en exporteer opnieuw.</s:String>
 	<s:String x:Key="ExportMp4NeedsEncoder">De ffmpeg op deze computer heeft geen H.264-encoder. Installeer een ffmpeg met libx264 of libopenh264 en exporteer opnieuw.</s:String>

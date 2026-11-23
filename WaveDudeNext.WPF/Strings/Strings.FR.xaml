@@ -277,6 +277,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="ExportDialogTitleProbeCsv">Exporter les données de la sonde</s:String>
 	<s:String x:Key="ExportDialogFilterCsv">Fichier CSV (*.csv)|*.csv</s:String>
 	<s:String x:Key="ExportFolderExistsFormat">Le dossier {0} existe et contient des fichiers. Les remplacer ?</s:String>
+	<s:String x:Key="ExportNeedsFolder">Cet export écrit plusieurs fichiers, qui ont besoin d'un dossier. Choisir le dossier maintenant ?</s:String>
 	<s:String x:Key="ExportError">L'export a échoué.</s:String>
 	<s:String x:Key="ExportMp4NeedsFfmpeg">L'export MP4 a besoin du programme ffmpeg, introuvable sur cet ordinateur. Installer ffmpeg (sous Linux, le paquet de ce nom) et exporter de nouveau.</s:String>
 	<s:String x:Key="ExportMp4NeedsEncoder">Le ffmpeg de cet ordinateur n'a pas d'encodeur H.264. Installer un ffmpeg avec libx264 ou libopenh264 et exporter de nouveau.</s:String>

@@ -85,7 +85,7 @@ public partial class MainView
 		c.Copy = Command(_clipboard.Copy, _clipboard.CanCopy);
 		c.Paste = Command(_clipboard.Paste, _clipboard.CanPaste);
 		c.Delete = Command(_items.Remove, _items.CanEdit);
-		c.ExportProbeCsv = Command(parameter => Fire(parameter is Probe probe ? Exporter.ExportProbeAsync(probe) : Task.CompletedTask), Exporter.CanExportProbe);
+		c.ExportProbeCsv = Command(parameter => Fire(parameter is Probe probe ? ExportProbeAsync(probe) : Task.CompletedTask), Exporter.CanExportProbe);
 		c.BrowseSceneImage = Command(_ => Fire(BrowseSceneImageAsync()));
 		c.SaveSceneImage = Command(_ => Fire(SaveSceneImageAsync()), _ => SceneImage.CanSave);
 		c.RemoveSceneImage = Command(_ => SceneImage.Remove(), _ => SceneImage.CanRemove);

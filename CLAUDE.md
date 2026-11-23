@@ -2629,6 +2629,113 @@ it; it looks disabled under the veil, mine, his to change), the view's key bindi
 is open (Avalonia tries them before the focused control sees a key, `KeyboardDevice.ProcessRawEvent`, read at 12.1.5:
 Esc is Stop's), and Tab cycles in the frame; the focus goes back where it was. A view as high as its content scrolls
 in the frame where the page is lower (About at 1000 × 520); the manual, which names a height, shrinks with the page.
+**Project files open from their contents** (his word: "only loading .wdproj files"): a browser's picker hands a page a
+name and bytes, no path, so `MainView.OpenPickedAsync` copies the stream (it reads only asynchronously) and
+`ProjectDocument.TryOpen(byte[], name)` makes it the open project, unsaved, the file's name suggested, as an example
+is (`OpenedKind.ProjectContents`). **The browser's Open dialog offers the project type alone** (the same day, his
+report that it showed "All files (*.*)" and nothing else): Avalonia's browser picker hands the browser only the file
+types that name a MIME type and offers the browser's own all-files entry when none is left
+(`BrowserStorageProvider.ConvertFileTypes`, read at 12.1.5), and the string table's four entries name none.
+`MainView.OpenFileTypes()` gives the browser the projects' entry with `ProjectDocument.MimeType`, a private media
+type written into no file; the desktop's list is unchanged.
+**Save and the exports write in the browser, through the picked file** (the same night, his word after I had put a
+status line "Files cannot be written in the browser version yet" in their place and offered to adjust the Open
+dialog's entry "if" it looked wrong: "you offer this garbage", "Just make the dialogs work"; **no notice in a
+working feature's place, and no "say so and I'll fix it": find out and fix**). `Platform/PickedFiles` is the one
+helper of every picker in the App: the file types from the string tables' filters, which in a browser name a media
+type each and lose the pattern in their names (Chromium takes every asterisk out of a type's description,
+`FormatFilterForExtensions` with `keep_extension_visible`, and Windows then appends the pattern itself: "Projects
+(.wdproj) (*.wdproj)"), and reading and writing a picked file that has no path. Save As writes the project's bytes
+(`ProjectDocument.TryGetContents`, then `ContentsSaved(name)`) and File > Save writes into the same picked file
+again (`MainView._projectFile`, also set by Open). An export is given a path in the runtime's temporary file system
+(`AvaloniaExportDialogs`), and when it has ended `DeliverAsync` copies what lies there into the picked file; an
+export of several files (both layers, an image sequence) asks for a folder as well, through a question in between
+(`ExportNeedsFolder`, new in the four tables: a browser opens a second picker only on a click), and writes them there
+as a desktop lays them out. MP4 was not offered there (no encoder; since 2026-11-22 it is, where the browser has
+one, see "The round of ten"); the format chosen last goes first, the browser's
+dialog starting on its first type. The scene image's two buttons and the colour scheme picker's file entry go the
+same ways (written, not run). **Avalonia.Browser 12.1.5 cannot write a file on the threaded runtime**: its
+`StreamHelper.write` copies .NET's view of the bytes into an array and then hands the stream the view (`s = t`),
+which the browser refuses with a TypeError; `main.js` wraps `FileSystemWritableFileStream.prototype.write` to copy
+such a view itself, and `PickedFiles` writes whole arrays alone, the wrapper not being told a part's bounds. A fault
+worth reporting upstream (his to write). **A letter that answers a dialog was typed into the text box under it**
+(Y for Yes made a source "yySource 2"): the key's text arrives after the dialog has closed, so the overlay gives the
+focus back at the dispatcher's Background priority, when that input has passed. **Proven** in a headless Edge on a
+copy of the working tree built under `%TEMP%` (his Start session was serving the repository's Debug output, which was
+not rebuilt under it), the browser's native pickers replaced by stand-ins that record their options and answer with
+real handles of the page's own storage, so everything after the pick is the browser's own: Open; Save As (24 KB of
+XML) and Save without a dialog; the field as AVI (0.9 MB, "RIFF…AVI"); both layers into the folder; a PNG sequence,
+100 files in a folder of its own; one frame as PNG; a probe's CSV; the real picker asked with the same options
+answers "the user aborted", not a TypeError; `ExportCheck` 44 of 44 on the desktop head. **Not seen**: the native
+dialogs themselves (what the type entries read on screen), the compiled build.
+**An export is written into the picked file as it is made** (2026-11-15/16, the user's word when I had listed "the
+written file still sits in the page's memory, so a long uncompressed video does not fit yet" as a thing not done:
+"but that is part of the reason for this change. The browser is always space-constrained. Even 3+20GB might not be
+enough, and we don't actually need it to fit the whole video at full quality"; the temporary file system of the
+paragraph above is the page's memory, in the program's lower 1 GB). The library: every sink opens its file through
+`Export/ExportFiles.Create(path)` (the AVI, QuickTime, MPEG-1 and encoder-fed MP4 writers, the image sequences, the
+stills, OpenEXR; not Media Foundation's writer, which is given a path, nor a probe's CSV), and a head sets
+`ExportFiles.Opener` once, as it sets its GPU engine and its frame storage: for a path it answers an `IExportFile`
+(`Write(position, bytes)`, always a whole array, the caller waiting until it is taken; `SetLength`; `Close`) or null
+for the file at the path, which is all a desktop ever gets. Over a head's file the library's `ExportFileStream`
+gathers what a sink writes in a row into pieces of 4 MB (the shared array pool's buffers, so a sequence of thousands
+of files makes no buffer each) and hands a piece over when it is full, when a write goes elsewhere (the video
+writers go back to their headers and indexes), at a flush and at the end. The App: `AvaloniaExportDialogs` is the
+opener. The path it gave the model for a pick without a path stands for the picked file, or for the folder picked
+for several files, in which each file is made when it is opened, a sequence's in a folder of its own;
+`PickedExportFile` seeks to each piece's place and writes it through the platform's stream on the UI thread, the
+export's thread waiting for the browser to have taken it, and awaits the stream's close, with which the browser
+puts the file in its place. So no more than the piece in hand is in memory. On the UI thread the opener answers
+null, since nothing can wait for that thread there: a probe's CSV, written there by `ProbeCsv` and small, is a file
+at the temporary path and is handed over afterwards by `DeliverAsync`, which has nothing else left to do.
+**`IExportDialogs.Shown(path)`** (the path itself by default, so the WPF head has no line for it) is how the
+exporter names an output in the lines that reach the status bar: "Exported 50 frames to one.avi", "to FOLDER/seq",
+where the temporary path had stood in the browser. **Proven**: `library_check` (LIBRARY OK, 862: the stream against
+a stream in memory over 400 writes, patches, seeks beyond the end and cuts, 24.9 MB, no piece over 4 MB; and AVI,
+QuickTime with both codecs, MPEG-1, the PNG, JPEG and OpenEXR sequences and two stills, twelve frames of 640 × 480
+with noise in them, through a head's files byte for byte the files on the disk, nothing at the path);
+`ExportCheck` on the Avalonia desktop head 45 of 45, its log clean; and the browser head (Debug, interpreted, a
+headless Edge 157, the WebGPU engine, the pickers' stand-ins as above, each file brought out of the browser and
+read by ffmpeg): an AVI of 640 × 360 (27.6 MB in 9 pieces, 40 frames decoded), both layers as QuickTime into the
+folder (50 frames each decoded), a PNG sequence of 50 files in `FOLDER/seq` (a frame looked at, the probe's graph
+box in it), a still, Export last into the same picked file a second time (11.0 MB in 5 pieces each time), a
+probe's CSV by the hand-over; and **a Full HD AVI of 720 frames, 4,478,991,140 bytes, more than the program's
+whole 4 GB**: 1082 pieces in 498.5 s (the interpreted build's rendering; 20.2 s of it waiting for the browser's
+file), the renderer process's working set flat at 716 to 723 MB while the file grew at 8.5 MB a second on the disk,
+the program's memory 1008 MB before and after, ffmpeg reading 720 frames from it and a frame from behind the 4 GB
+mark as a picture of the field. **Not seen**: the compiled build, another browser, a real picked file outside the
+browser's own storage (the stand-ins' handles are of the same kind), a write the browser refuses in mid-export (a
+full disk; it would fail the export as a file's error does), a cancelled export there. **Left as it is**: in the
+browser `Settings.LastExportFolder` takes the temporary folder of the last pick, a path that means nothing there
+(the hints per project need a project file's path and store nothing). **Seen on the way, the silent start again**
+(postponed by him): the first load for the large run never reached "ready" in two minutes and the page answered the
+debugging port no more; four minutes in, its renderer process was using one whole core (one sample of 4 s), which
+is new to know of that hang; the browser restarted, the next load came up.
+**Proven**: the desktop head by `AboutCheck` (18 of 18) and a keyboard probe (19 of 19: the error box of a file
+that is no project, the save question's focus, Tab cycle, Esc and the letter D, the manual by F1, once only, Esc); the
+browser head (Debug, a headless Edge 157 on a port of its own, clicks and single keys through the debugging port,
+screenshots): About with the license document and a link, which opens a new tab; the manual; the save question (Save
+says it cannot write, D discards); the error box of an unreadable picked file; the memory warning at a RAM cache of
+10 %, Run applying Auto and the run completing; File > Open of `tiny.wdproj`. **Not seen**: the browser's own
+picker (`showOpenFilePicker` cannot be driven: the probe took it away before Avalonia's storage script loaded, which
+then uses a file input the debugging port can answer), the compiled build, two dialogs at once, another browser.
+**Found on the way, each open then** (1, 2, 3 and 5 mended on 2026-11-21, see "The browser head's open faults"
+below): (1) **a drop from outside the page arrives empty in this head**, a file's as much
+as an object's from another tab (his remark that drag and drop between browser sessions is missing):
+Avalonia.Browser's script hands .NET the browser's live `DataTransferItem`s, which the browser empties when the
+event's handlers have returned, and on the threaded runtime .NET reads them later (the page's own drop event had
+the file, `OnDrop` no format); the status bar says so and names File > Open. A script of ours that reads the drop
+during the event would mend it, not built. (2) **The same lateness makes a key's default unpreventable**
+(`OnKeyDown(…).then(… preventDefault())` in that script): every Tab moves the browser's own focus off the
+application's element (the key-up lands on `BODY`) and later keys never arrive, with or without a dialog; F1 opens
+the manual and Edge's own help in a new tab. (3) .NET's own error texts are resource keys in the browser build
+("XmlSerializeErrorDetails, 1, 1" in the error box; `UseSystemResourceKeys`). (4) The manual took 8.8 s to render in
+the interpreted Debug build. (5) About's system report speaks of OpenCL there. **Harness notes**: a tab the
+application or the browser opened becomes the debugging port's first page, so the driver attaches to the page by its
+address; `Runtime.enable` replays the console of the page before a navigation; the viewport override ends with the
+session; a menu is walked by clicks there, the key walk being unreliable for the reason above. **An Avalonia window
+that was never activated takes no posted keys once a modal dialog has closed** (the committed build the same): a
+probe gives each such flow a session of its own.
 **Where the browser's compiled build loses against native, measured** (2026-11-21, the user's question whether the
 ahead-of-time compiling the browser needs has the faults ReadyToRun had on the desktop, and his word to test each
 workaround; a bench app under `%TEMP%` on the repository's library, native beside the browser's build, the tables

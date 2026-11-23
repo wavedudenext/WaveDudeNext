@@ -277,6 +277,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="ExportDialogTitleProbeCsv">Sondendaten exportieren</s:String>
 	<s:String x:Key="ExportDialogFilterCsv">CSV-Datei (*.csv)|*.csv</s:String>
 	<s:String x:Key="ExportFolderExistsFormat">Der Ordner {0} existiert und enthält Dateien. Ersetzen?</s:String>
+	<s:String x:Key="ExportNeedsFolder">Dieser Export schreibt mehrere Dateien, die einen Ordner brauchen. Den Ordner jetzt wählen?</s:String>
 	<s:String x:Key="ExportError">Der Export ist fehlgeschlagen.</s:String>
 	<s:String x:Key="ExportMp4NeedsFfmpeg">Der MP4-Export braucht das Programm ffmpeg, das auf diesem Computer nicht gefunden wurde. ffmpeg installieren (unter Linux das Paket dieses Namens) und erneut exportieren.</s:String>
 	<s:String x:Key="ExportMp4NeedsEncoder">Das ffmpeg auf diesem Computer hat keinen H.264-Encoder. Ein ffmpeg mit libx264 oder libopenh264 installieren und erneut exportieren.</s:String>

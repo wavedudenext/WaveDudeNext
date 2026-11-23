@@ -64,6 +64,24 @@ async function isolate() {
 	await new Promise(() => { });
 }
 
+// A picked file is written through Avalonia.Browser's own script, which on the threaded runtime hands the browser's
+// file stream .NET's view of the bytes instead of the bytes (12.1.5, StreamHelper.write in avalonia.js: where the
+// program's memory is shared it copies the view into an array, `t.copyTo(a, r)`, and then writes the view, `s = t`).
+// The stream refuses that value with a TypeError, so nothing could be saved or exported in this head (2026-11-15).
+// Until Avalonia writes the array it made, the stream's write does: a value that is such a view is copied into an
+// array first. The program writes whole arrays alone (PickedFiles.cs), so the view's length is what is to be written.
+if (globalThis.FileSystemWritableFileStream) {
+	const write = FileSystemWritableFileStream.prototype.write;
+	FileSystemWritableFileStream.prototype.write = function (data) {
+		if (data && typeof data.copyTo === 'function' && typeof data.byteLength === 'number' && !ArrayBuffer.isView(data)) {
+			const bytes = new Uint8Array(data.byteLength);
+			data.copyTo(bytes);
+			data = bytes;
+		}
+		return write.call(this, data);
+	};
+}
+
 // The application's log in the console (BrowserConsoleTarget calls this for every line), styled as the user's own
 // web projects style theirs: each line through the console's method of its level, so the developer tools' level
 // filter works, the level as a small badge, Trace in grey and Debug in blue, Fatal as a red badge. The level is
