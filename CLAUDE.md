@@ -3118,6 +3118,26 @@ settings with a light desktop and a French browser; Dark set on a light desktop 
 browser, which gets English. **The start itself is as
 long as it was** (2.8 s after the files in the compiled build, of which the application's set-up is 1.2 s);
 shortening it was not asked for and would begin with a profile of that set-up.
+**The harnesses against the Avalonia head** (the same night, on his word): ten of twelve passed outright
+(`PreviewCheck` 43, `LanguageCheck`, `ProbeGraphCheck` 39, `ImportCheck` 10, `ExportCheck` 45,
+`PreviewQualityCheck`, `SceneImageCheck` 9, `ColorPickerCheck` 13, `AboutCheck` 18, `SelectionCheck` 10).
+`RunCheck` stopped once at 40 checks with the app closed under it (not explained, not repeated) and gave 69 of 71
+at its second run: the foreground guard, and "the automatic re-run follows" within 6 s, which came after 10 s
+because the Tab walk to the handle had let the run reach frame 80 and two preview frames of 5 s each were computed
+first (an edit during a run asks for its frame twice, "the run is stale: X = …" and "the run is stale", both
+heads; said to him, not changed). `KeyboardCheck` stopped at 11: its Tab walk ran backwards in places, keys being
+typed at the machine; its last three checks were not evaluated. **It found the menu bar in the Tab cycle once F10
+had been used**: a menu is a focus scope, and Avalonia's Tab navigation takes the element a scope last had the
+focus on for the scope's first child whatever its presenter's `TabNavigation` says (`TabNavigation.FocusedElement`,
+read at 12.1.5); the headers are no Tab stops now (`TopLevelMenuItemTheme`). Proven by the framework's own order,
+`KeyboardNavigationHandler.GetNext` called by reflection from a startup hook on a desktop of its own: 21 stops
+round, and after a header had had the focus, Tab from the last stop went to that header before and to the first
+stop after. **Harness notes**: UI Automation does not work for a harness on a desktop that is never shown (the
+window has no name and no focused element there), so the keyboard harnesses need the screen; `Debugger.pause` does
+not stop a thread that spins in WebAssembly, while `Profiler.start` before and `Runtime.terminateExecution` at
+the hang, then `Profiler.stop`, give the stack; `Network.setBlockedURLs` blocked nothing; a console line awaited
+after a navigation is found at once in the page before's lines unless the list is cleared; and every start of a
+head takes the file types, a hidden start of the WPF Release build gives them back.
 
 ## People, name, license
 

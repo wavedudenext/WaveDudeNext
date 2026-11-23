@@ -306,6 +306,9 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 			     (Popup.InheritsTransform, defaulted on by WindowZoom). A scroll viewer with the theme's own bars takes over
 			     when a menu is taller than the screen. -->
 			<ControlTheme x:Key="TopLevelMenuItemTheme" TargetType="MenuItem">
+				<!-- no Tab stop: the menu bar is out of the Tab cycle (see the menu's theme below, which says why this
+				     must be said on the headers themselves) -->
+				<Setter Property="IsTabStop" Value="False" />
 				<Setter Property="Background" Value="Transparent" />
 				<Setter Property="Foreground" Value="{DynamicResource MenuForeground}" />
 				<!-- the keyboard's header is the highlighted one (:selected), as in WPF, with no frame round it (2026-11-11,
@@ -357,7 +360,12 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 			</ControlTheme>
 
 			<!-- the menu bar: MenuBackground, Padding 2,0, as high as its 23 px headers, out of the Tab cycle (upstream's
-			     rule: F10 or Alt reach it; the arrow keys walk it) -->
+			     rule: F10 or Alt reach it; the arrow keys walk it). The items' presenter saying None is not enough for
+			     that (2026-11-20, found by KeyboardCheck's walk): a menu is a focus scope, and the framework's Tab
+			     navigation takes the element a scope last had the focus on for the scope's first child whatever the
+			     presenter says (TabNavigation.FocusedElement, read at 12.1.5), so once F10 had been used, Tab from
+			     the window's last stop landed on that header instead of the first stop. The headers are therefore no
+			     Tab stops themselves (TopLevelMenuItemTheme); a menu-wide None changed nothing, tried -->
 			<ControlTheme x:Key="{x:Type Menu}" TargetType="Menu">
 				<Setter Property="Background" Value="{DynamicResource MenuBackground}" />
 				<Setter Property="Foreground" Value="{DynamicResource MenuForeground}" />
