@@ -265,6 +265,13 @@ public partial class MainView : UserControl
 	/// <summary>The system's own font where the head offers it (<see cref="App.SystemFont"/>), for the View menu's entry; null in the desktop head.</summary>
 	public ISystemFont? SystemFont => App.SystemFont;
 
+	/// <summary>
+	/// Whether the application runs as a page in a browser, for the View menu: the UI zoom is the browser's own there
+	/// (it scales the page, and with it this view, which is drawn at the page's pixel density), so the menu's factors,
+	/// which scale a window's content, give way to an entry that says so.
+	/// </summary>
+	public bool IsInBrowser => OperatingSystem.IsBrowser();
+
 	/// <summary>An edit has finished (the window's input said so, or an edit complete in itself arrived): the undo step ends, the stale run is redone.</summary>
 	private void OnEditFinished()
 	{

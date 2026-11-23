@@ -211,32 +211,38 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 				<MenuItem Header="{DynamicResource MenuViewTheme}" controls:MenuIcon.Drawing="Theme"
 				          ItemsSource="{Binding Options, Source={x:Static theming:ThemeController.Instance}}" ItemContainerTheme="{StaticResource ThemeMenuItem}" />
 				<!-- the UI zoom (2026-11-02, the user's request): every window's content at the factor, a user setting applied
-				     live (WindowZoom); the parameter is the factor with a decimal point -->
+				     live (WindowZoom); the parameter is the factor with a decimal point. In a browser (2026-11-20, the user's
+				     report that the factors did nothing there, and his rule: no entry without a function unless it says
+				     where the function is) the zoom is the browser's own, which scales the page and this view with it, and
+				     a page cannot set it: the factors are not shown there, and the one entry in their place, greyed since
+				     it runs nothing, names the browser's zoom and its keys -->
 				<MenuItem Header="{DynamicResource MenuViewUiZoom}" controls:MenuIcon.Drawing="Zoom" AutomationProperties.AutomationId="MenuUiZoom">
 					<MenuItem Header="{DynamicResource MenuViewUiZoom50}" ToggleType="Radio" Command="{Binding Commands.SetUiZoom}" CommandParameter="0.5"
 					          IsChecked="{Binding Source={x:Static ui:Settings.Default}, Path=UiZoom, Converter={StaticResource DoubleEquals}, ConverterParameter=0.5, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuUiZoom50" />
+					          AutomationProperties.AutomationId="MenuUiZoom50" IsVisible="{Binding !IsInBrowser}" />
 					<MenuItem Header="{DynamicResource MenuViewUiZoom75}" ToggleType="Radio" Command="{Binding Commands.SetUiZoom}" CommandParameter="0.75"
 					          IsChecked="{Binding Source={x:Static ui:Settings.Default}, Path=UiZoom, Converter={StaticResource DoubleEquals}, ConverterParameter=0.75, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuUiZoom75" />
+					          AutomationProperties.AutomationId="MenuUiZoom75" IsVisible="{Binding !IsInBrowser}" />
 					<MenuItem Header="{DynamicResource MenuViewUiZoom100}" ToggleType="Radio" Command="{Binding Commands.SetUiZoom}" CommandParameter="1"
 					          IsChecked="{Binding Source={x:Static ui:Settings.Default}, Path=UiZoom, Converter={StaticResource DoubleEquals}, ConverterParameter=1, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuUiZoom100" />
+					          AutomationProperties.AutomationId="MenuUiZoom100" IsVisible="{Binding !IsInBrowser}" />
 					<MenuItem Header="{DynamicResource MenuViewUiZoom125}" ToggleType="Radio" Command="{Binding Commands.SetUiZoom}" CommandParameter="1.25"
 					          IsChecked="{Binding Source={x:Static ui:Settings.Default}, Path=UiZoom, Converter={StaticResource DoubleEquals}, ConverterParameter=1.25, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuUiZoom125" />
+					          AutomationProperties.AutomationId="MenuUiZoom125" IsVisible="{Binding !IsInBrowser}" />
 					<MenuItem Header="{DynamicResource MenuViewUiZoom150}" ToggleType="Radio" Command="{Binding Commands.SetUiZoom}" CommandParameter="1.5"
 					          IsChecked="{Binding Source={x:Static ui:Settings.Default}, Path=UiZoom, Converter={StaticResource DoubleEquals}, ConverterParameter=1.5, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuUiZoom150" />
+					          AutomationProperties.AutomationId="MenuUiZoom150" IsVisible="{Binding !IsInBrowser}" />
 					<MenuItem Header="{DynamicResource MenuViewUiZoom200}" ToggleType="Radio" Command="{Binding Commands.SetUiZoom}" CommandParameter="2"
 					          IsChecked="{Binding Source={x:Static ui:Settings.Default}, Path=UiZoom, Converter={StaticResource DoubleEquals}, ConverterParameter=2, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuUiZoom200" />
+					          AutomationProperties.AutomationId="MenuUiZoom200" IsVisible="{Binding !IsInBrowser}" />
 					<MenuItem Header="{DynamicResource MenuViewUiZoom250}" ToggleType="Radio" Command="{Binding Commands.SetUiZoom}" CommandParameter="2.5"
 					          IsChecked="{Binding Source={x:Static ui:Settings.Default}, Path=UiZoom, Converter={StaticResource DoubleEquals}, ConverterParameter=2.5, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuUiZoom250" />
+					          AutomationProperties.AutomationId="MenuUiZoom250" IsVisible="{Binding !IsInBrowser}" />
 					<MenuItem Header="{DynamicResource MenuViewUiZoom300}" ToggleType="Radio" Command="{Binding Commands.SetUiZoom}" CommandParameter="3"
 					          IsChecked="{Binding Source={x:Static ui:Settings.Default}, Path=UiZoom, Converter={StaticResource DoubleEquals}, ConverterParameter=3, Mode=OneWay}"
-					          AutomationProperties.AutomationId="MenuUiZoom300" />
+					          AutomationProperties.AutomationId="MenuUiZoom300" IsVisible="{Binding !IsInBrowser}" />
+					<MenuItem Header="{DynamicResource MenuViewUiZoomBrowser}" IsEnabled="False" IsVisible="{Binding IsInBrowser}"
+					          AutomationProperties.AutomationId="MenuUiZoomBrowser" />
 				</MenuItem>
 				<MenuItem Header="{DynamicResource MenuViewLanguage}" controls:MenuIcon.Drawing="Language"
 				          ItemsSource="{Binding Options, Source={x:Static localization:LanguageController.Instance}}" ItemContainerTheme="{StaticResource LanguageMenuItem}" />

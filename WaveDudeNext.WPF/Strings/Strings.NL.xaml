@@ -75,6 +75,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="MenuViewUiZoom200">2x</s:String>
 	<s:String x:Key="MenuViewUiZoom250">2,5x</s:String>
 	<s:String x:Key="MenuViewUiZoom300">3x</s:String>
+	<s:String x:Key="MenuViewUiZoomBrowser">Gebruik de zoom van de browser: Ctrl+Plus, Ctrl+Min, Ctrl+0</s:String>
 	<s:String x:Key="MenuViewLanguage">Taa_l</s:String>
 	<s:String x:Key="MenuViewSystemFont">Systeemlettertype _gebruiken</s:String>
 	<s:String x:Key="MenuViewResolution">Voorbeeld_resolutie</s:String>

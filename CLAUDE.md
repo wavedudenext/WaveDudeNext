@@ -2736,6 +2736,25 @@ address; `Runtime.enable` replays the console of the page before a navigation; t
 session; a menu is walked by clicks there, the key walk being unreliable for the reason above. **An Avalonia window
 that was never activated takes no posted keys once a modal dialog has closed** (the committed build the same): a
 probe gives each such flow a session of its own.
+**View > UI zoom says in a browser that the zoom is the browser's** (the same day, the user's report that the entry
+did nothing there, and his rule: no menu entry without a function unless it says where the function is).
+`WindowZoom` scales windows, and a page has none. The eight factors are bound to `!IsInBrowser`
+(`MainView.IsInBrowser`), and one greyed entry is shown in their place there, `MenuViewUiZoomBrowser` in the four
+tables ("Use the browser's zoom: Ctrl+Plus, Ctrl+Minus, Ctrl+0"), last in the list so the desktop's entries keep
+their places; the form is mine, his to change. **That the browser's zoom scales the view was checked with the real
+zoom**: the profile's zoom for the host at 150 % (`partition.per_host_zoom_levels.x.localhost.zoom_level`, the
+factor's logarithm to the base 1.2, in the profile's `Default\Preferences`, written while the browser is closed):
+`devicePixelRatio` 1.5, the canvas 1376 × 808 pixels shown at 917 × 539, "Display scale 150 %", sharp in the
+capture. Seen in the page: the submenu with the one entry (before it moved to the list's end); on the desktop head,
+on a desktop of its own: nine entries, the eight factors shown, the notice hidden. **Harness notes**: the debugging
+port's `Emulation.setDeviceMetricsOverride` with a scale factor is no zoom for this head (the canvas kept the CSS
+size as its pixel size and was stretched: Avalonia sizes it by the resize observer's device-pixel box, which the
+emulation leaves as it was); Ctrl+Plus sent with `Input.dispatchKeyEvent` does not zoom a headless browser;
+`--window-size` did nothing beside `--headless=new` (500 × 320), `Browser.setWindowBounds` sets it; the session's
+viewport override ends with the session; **the SDK's host reads its list of files at its start**, so after a
+rebuild it answers "download … failed" for the new fingerprints until it is started again, which is what a rebuild
+under his Start session does to his page. And `sed -i` in Git Bash wrote the markup file with other line ends
+(put back byte for byte): files are edited with the Edit tool.
 **Where the browser's compiled build loses against native, measured** (2026-11-21, the user's question whether the
 ahead-of-time compiling the browser needs has the faults ReadyToRun had on the desktop, and his word to test each
 workaround; a bench app under `%TEMP%` on the repository's library, native beside the browser's build, the tables
