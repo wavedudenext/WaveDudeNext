@@ -35,8 +35,20 @@ public interface IClipboard
 	/// Puts <paramref name="text"/> on the clipboard twice, under <paramref name="format"/> and as plain text, so a
 	/// text editor takes it too; it stays there when the application ends.
 	/// </summary>
-	/// <returns>False when the clipboard refused (another program holds it open); the implementation logs that.</returns>
+	/// <returns>
+	/// False when the clipboard refused (another program holds it open); the implementation logs that. An application
+	/// whose clipboard only answers later answers true here and logs a refusal when it comes; what must not go on
+	/// after a refusal asks <see cref="SetTextAsync"/>.
+	/// </returns>
 	bool TrySetText(string format, string text);
+
+	/// <summary>
+	/// <see cref="TrySetText"/>, answered when the clipboard has taken the text or refused it (2026-11-22, for Cut,
+	/// which must not remove what the clipboard did not take): at once where the clipboard answers at once, which is
+	/// this default; later where it answers later (a browser may refuse a page the clipboard, and says so only then).
+	/// </summary>
+	/// <returns>Whether the clipboard holds the text now; the implementation logs a refusal.</returns>
+	Task<bool> SetTextAsync(string format, string text) => Task.FromResult(TrySetText(format, text));
 
 	/// <summary>
 	/// Reads the clipboard once: the text it holds under <paramref name="format"/>, else its plain text, else null.

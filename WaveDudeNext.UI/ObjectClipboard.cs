@@ -67,23 +67,54 @@ public sealed class ObjectClipboard(ProjectDocument document, Selection selectio
 		}
 	}
 
+	/// <summary>
+	/// <see cref="Copy"/> for an application whose clipboard answers later: the answer is whether the clipboard took
+	/// the objects (false too when there were none to take).
+	/// </summary>
+	public Task<bool> CopyAsync(object? parameter) => CopyToClipboardAsync(CopyGroup(parameter));
+
+	/// <summary>
+	/// <see cref="Cut"/> for an application whose clipboard answers later (2026-11-22: there the items had been
+	/// removed before the clipboard had said that it took them, and a browser that refused a page the clipboard left
+	/// them nowhere but in the undo history): the items are removed once the clipboard holds them, and not at all
+	/// when it refused, or when the selection became another one while it was asked.
+	/// </summary>
+	/// <returns>Whether the items were removed.</returns>
+	public async Task<bool> CutAsync(object? parameter)
+	{
+		object[] group = CutGroup(parameter);
+		if (!await CopyToClipboardAsync(group))
+		{
+			return false;
+		}
+		if (!CutGroup(parameter).SequenceEqual(group))
+		{
+			Logger.Debug("The selection changed while the clipboard was written; the objects are copied and nothing is removed");
+			return false;
+		}
+		items.Remove(parameter);
+		return true;
+	}
+
 	/// <summary>Puts the clipboard's objects into the project where the command points and selects them, the last one current.</summary>
-	public void Paste(object? parameter)
+	/// <returns>Whether anything was pasted: false when the clipboard holds no objects, or none that go where the command points.</returns>
+	public bool Paste(object? parameter)
 	{
 		// taken, not kept: a paste makes the clip's objects the project's, so the next paste parses the text afresh
 		ProjectClipboard.Clip? clip = Clip();
 		_cache = null;
 		if (clip == null)
 		{
-			return;
+			return false;
 		}
 		IReadOnlyList<object> pasted = ProjectClipboard.Paste(Project, clip, selection.Target(parameter));
 		if (pasted.Count == 0)
 		{
-			return;
+			return false;
 		}
 		Logger.Debug("Pasted {Count} object(s): {Names}", pasted.Count, string.Join(", ", pasted.Select(NameOrKind)));
 		selection.Set(pasted.Where(item => item is INamed), pasted[^1]);
+		return true;
 	}
 
 	/// <summary>The copyable objects the command acts on: the row given, or the selection it belongs to.</summary>
@@ -96,6 +127,17 @@ public sealed class ObjectClipboard(ProjectDocument document, Selection selectio
 	private bool CopyToClipboard(object[] objects)
 	{
 		if (objects.Length == 0 || !clipboard.TrySetText(ProjectClipboard.Format, ProjectClipboard.Write(Project, objects)))
+		{
+			return false;
+		}
+		Logger.Debug("Copied {Count} object(s): {Names}", objects.Length, string.Join(", ", objects.Select(NameOrKind)));
+		return true;
+	}
+
+	/// <summary><see cref="CopyToClipboard"/>, answered when the clipboard has taken the objects or refused them.</summary>
+	private async Task<bool> CopyToClipboardAsync(object[] objects)
+	{
+		if (objects.Length == 0 || !await clipboard.SetTextAsync(ProjectClipboard.Format, ProjectClipboard.Write(Project, objects)))
 		{
 			return false;
 		}

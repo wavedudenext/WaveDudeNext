@@ -81,9 +81,11 @@ public partial class MainView
 			}
 		}, parameter => Selection.IsGroupable(Selection.Target(parameter)));
 		c.SelectAll = Command(_ => Selection.SelectAll(Document.Project), _ => Selection.Groupable(Document.Project).Any());
-		c.Cut = Command(_clipboard.Cut, _clipboard.CanCut);
-		c.Copy = Command(_clipboard.Copy, _clipboard.CanCopy);
-		c.Paste = Command(_clipboard.Paste, _clipboard.CanPaste);
+		// both wait for the clipboard's answer, which comes after the command has ended (CutAsync)
+		c.Cut = Command(parameter => Fire(CutAsync(parameter)), _clipboard.CanCut);
+		c.Copy = Command(parameter => Fire(_clipboard.CopyAsync(parameter)), _clipboard.CanCopy);
+		// offered without knowing where the clipboard cannot be asked between pastes (a browser)
+		c.Paste = Command(parameter => Fire(PasteAsync(parameter)), parameter => !_systemClipboard.AnswersQuestions || _clipboard.CanPaste(parameter));
 		c.Delete = Command(_items.Remove, _items.CanEdit);
 		c.ExportProbeCsv = Command(parameter => Fire(parameter is Probe probe ? ExportProbeAsync(probe) : Task.CompletedTask), Exporter.CanExportProbe);
 		c.BrowseSceneImage = Command(_ => Fire(BrowseSceneImageAsync()));
@@ -195,6 +197,51 @@ public partial class MainView
 
 	/// <summary>Starts a task from a command: an error the models did not expect reaches the UI thread's handler, as an exception in a handler did.</summary>
 	private static async void Fire(Task task) => await task;
+
+	/// <summary>
+	/// Edit > Cut: the items go once the clipboard holds them, and stay when it refused (2026-11-22; the model says
+	/// why). The command has ended by then, so the edit's end is told here.
+	/// </summary>
+	private async Task CutAsync(object? parameter)
+	{
+		if (await _clipboard.CutAsync(parameter))
+		{
+			OnEditFinished();
+		}
+	}
+
+	/// <summary>
+	/// Edit > Paste. Where the clipboard's changes are counted (Windows) the objects the questions have read are
+	/// pasted at once, inside the command. Elsewhere the clipboard is read first, at the paste itself (2026-11-21):
+	/// without a count nothing says that what a question read is still what the clipboard holds, and in a browser
+	/// no question may read at all, so there this is the one moment the clipboard is read, at the user's own key or
+	/// click, where a browser asks for its permission. The command has ended by the time the clipboard answers,
+	/// so the edit's end is told here. A paste that was offered without knowing and finds nothing says so.
+	/// </summary>
+	private async Task PasteAsync(object? parameter)
+	{
+		if (_systemClipboard.ChangeCount != 0)
+		{
+			_clipboard.Paste(parameter);
+			return;
+		}
+		if (!await _systemClipboard.ReadNowAsync(ProjectClipboard.Format))
+		{
+			if (!_systemClipboard.AnswersQuestions)
+			{
+				Logger.Warn("The browser did not let the page read the clipboard: nothing was pasted");
+			}
+			return;
+		}
+		if (_clipboard.Paste(parameter))
+		{
+			OnEditFinished();
+		}
+		else if (!_systemClipboard.AnswersQuestions)
+		{
+			Logger.Info("Nothing was pasted: the clipboard holds no objects of a project that fit here");
+		}
+	}
 
 	/// <summary>F5: the error of a run the user asked for is shown.</summary>
 	private async Task RunAsync()

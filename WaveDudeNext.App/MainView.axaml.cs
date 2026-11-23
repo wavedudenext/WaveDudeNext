@@ -61,6 +61,8 @@ public partial class MainView : UserControl
 
 	private readonly ProjectItems _items;
 	private readonly ObjectClipboard _clipboard;
+	/// <summary>The system's clipboard under <see cref="_clipboard"/>: asked directly where a paste must read it first (<see cref="PasteAsync"/>).</summary>
+	private readonly AvaloniaClipboard _systemClipboard;
 	private readonly UndoHistory _history;
 	private readonly ExportPaths _exportPaths;
 	private readonly AvaloniaExportDialogs _exportDialogs;
@@ -85,7 +87,10 @@ public partial class MainView : UserControl
 		SceneComposer = new SceneComposer(Document, decoder, new AvaloniaSynchronizationContext(DispatcherPriority.Background));
 		_exportPaths = new ExportPaths(Document);
 		_items = new ProjectItems(Document, Selection);
-		_clipboard = new ObjectClipboard(Document, Selection, _items, new AvaloniaClipboard(this));
+		_systemClipboard = new AvaloniaClipboard(this);
+		// a read behind a question found the clipboard changed: Paste is asked again
+		_systemClipboard.Changed += (_, _) => Commands.Requery();
+		_clipboard = new ObjectClipboard(Document, Selection, _items, _systemClipboard);
 		_history = new UndoHistory(Document, Selection);
 		_history.PropertyChanged += (_, _) => Commands.Requery();
 		// a step written back by Undo or Redo: the colours of the project as it is now (see OnProjectChanged)

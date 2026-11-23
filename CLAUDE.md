@@ -2963,6 +2963,17 @@ unspecified) into every file it makes, ffmpeg's too. Proven: `library_check` (a 
 (High, level 4.2; 1.2 s compiled, 39 s interpreted), both read back by ffmpeg with every frame and "yuv420p(tv, smpte170m/unknown/unknown)", a frame
 of each looked at; a page without `VideoEncoder`: the log's line and a dialog without MP4. Not seen: a long
 export, another browser, a card without an encoder (Baseline through the browser's software one).
+**Paste**: `AvaloniaClipboard` had kept its first read for good wherever the clipboard's changes are not counted
+(anything but Windows: a browser, Linux, macOS), so a copy made elsewhere was never seen, and in a browser the
+first question from a menu read the clipboard, which is where a browser asks for its permission. Now: without a
+count a question answers with the last read and reads again behind it (`Changed` asks the commands again), a paste
+reads first (`ReadNowAsync`, the App's `PasteAsync`, which tells the edit's end itself, the command having ended),
+and in a browser no question reads at all (`AnswersQuestions`): Paste is offered without knowing, a paste that
+finds nothing says so at Info, a refused read at Warn. `ObjectClipboard.Paste` answers whether it pasted. On
+Windows the paste is the old call. Proven in the head with stand-ins for `navigator.clipboard.read` and `write`
+(a headless Edge's clipboard is the user's own): 0 reads until the paste, a source's XML pasted and selected, plain
+words and a refusal each with their line. Not run: the desktop Avalonia head (its path on Windows is the old
+one), Linux, macOS, a real permission prompt.
 **The interpreted methods**: `ExportJob.Render`'s sink loop and `SimulationRun.RunLoop` each had a catch inside a
 finally block, for which the compiler leaves a whole method to the interpreter; the catches are in a local function
 and a method of their own now (an IL scan for a handler inside a finally: 2 before, 0 after, none in the other
@@ -2995,6 +3006,22 @@ our three assemblies and compiling only part of the program are not worth their 
 **Text on whole pixels**: `WholePixelShaper` is installed in the browser head as on the desktop
 (`AfterPlatformServicesSetup` in `Program.BuildAvaloniaApp`; its `Install` forgives a `NotSupportedException` too):
 stems whole 195 → 312, split 97 → 75 in one capture of the window, counted along every row.
+**Cut, and drags that leave the page** (2026-11-22, the user's pick from a second list, "then let's start with the
+copy-paste issue", and his word while it was done: "drag-and-drop is another issue"; uncommitted). **My list's
+first item was wrong**: I had read that Avalonia names the application's own clipboard format
+`application/avn-fmt.…` and that Edge takes no such type from a page (`ClipboardItem.supports` says false) and
+concluded that Copy never reaches the clipboard; run, the write holds `text/plain` alone (Avalonia leaves the
+format out there) and is taken. **The fault that was there**: a write the browser refuses (no permission, the
+page not in front) was an error nobody looked at, red in the status bar as "TaskScheduler.UnobservedTaskException",
+the log said "Copied", and Cut had removed the objects all the same, the write being started and never waited
+for. Now `IClipboard.SetTextAsync` answers when the clipboard has taken the text or refused it (a default
+member: at once with `TrySetText`'s answer, which is the WPF head's; `AvaloniaClipboard`'s waits and makes a
+refusal a warning, "The clipboard may not be written now: nothing was copied (…)"), `ObjectClipboard.CopyAsync`
+and `CutAsync` use it, Cut removing once the clipboard holds the items and not when the selection became another
+one meanwhile, and the App's `CutAsync` tells the edit's end. Proven in the head with a stand-in for
+`navigator.clipboard.write` that refuses what `ClipboardItem.supports` refuses, or everything: copy and paste,
+cut and paste, and a refused cut that leaves the row and shows the warning. Not run: the desktop Avalonia head
+(its clipboard is the user's own), where Cut now also waits for the clipboard.
 **The loading mark is the icon, the name and a bar with the megabytes** (2026-11-22, the user's word on the spinner
 over the name: it "does its job, but looks like ass"; his choice, A, of five looks drawn as a page of mock-ups,
 all "logo and progress": A as built, B a ring around the round icon, C the progress as the application's blue
