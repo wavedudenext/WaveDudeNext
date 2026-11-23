@@ -17,6 +17,7 @@
 
 using NLog;
 using WaveDudeNext.Model;
+using WaveDudeNext.Probes;
 using WaveDudeNext.Runs;
 using WaveDudeNext.UI;
 using WaveDudeNext.WPF.Rendering;
@@ -34,18 +35,18 @@ public sealed class WpfFrameDecorators : IFrameDecorators
 	private static readonly ILogger Logger = LogManager.GetLogger(typeof(WpfFrameDecorators).FullName!);
 
 	/// <inheritdoc/>
-	public IFrameDecorator Create(Project project, SimulationRun run) => new Decorator(project, run);
+	public IFrameDecorator Create(Project project, RunSpec spec, IReadOnlyList<ProbeTrace> traces) => new Decorator(project, spec, traces);
 
 	private sealed class Decorator : IFrameDecorator
 	{
 		private readonly ProbeGraphPainter? _probes;
 		private readonly SourceMarkerPainter? _sources;
 
-		public Decorator(Project project, SimulationRun run)
+		public Decorator(Project project, RunSpec spec, IReadOnlyList<ProbeTrace> traces)
 		{
 			Display display = project.Display;
-			_probes = display.ProbeGraphsInExport || display.ProbeMarkersInExport ? new ProbeGraphPainter(project, run, display.ProbeGraphsInExport, display.ProbeMarkersInExport) : null;
-			_sources = display.SourceMarkersInExport ? new SourceMarkerPainter(project, run.Spec.Width, run.Spec.Height) : null;
+			_probes = display.ProbeGraphsInExport || display.ProbeMarkersInExport ? new ProbeGraphPainter(project, spec, traces, display.ProbeGraphsInExport, display.ProbeMarkersInExport) : null;
+			_sources = display.SourceMarkersInExport ? new SourceMarkerPainter(project, spec.Width, spec.Height) : null;
 			if (_sources is { IsEmpty: true })
 			{
 				Logger.Debug("Export source markers: none (no enabled source)");

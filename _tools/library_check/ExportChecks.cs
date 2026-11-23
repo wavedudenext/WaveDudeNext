@@ -584,6 +584,134 @@ internal static partial class ExportChecks
 			check(mp4Job.Completion.Wait(30000) && mp4Job.State == ExportState.Completed && mp4Job.FramesDone == 10 && new FileInfo(mp4Path).Length > 100, "job: an MP4 of 10 frames written on the job's thread" + (mp4Job.Error != null ? " (" + mp4Job.Error.Message + ")" : ""));
 		}
 		CheckH264Job(check, folder, store, fieldLayer);
+		CheckExportRun(check, folder, lut);
+	}
+
+	/// <summary>
+	/// An export run against a stored run of the same spec (2026-11-15, the user's design: an export computes its frames
+	/// by a run of its own and stores none): every frame of both planes bit for bit, the probes' recordings value for
+	/// value at every frame and at the run's end, and an export job fed by one writes the files a job fed by the store
+	/// writes, byte for byte; on the CPU engine and on the GPU's where there is one.
+	/// </summary>
+	private static void CheckExportRun(Action<bool, string> check, string folder, ColorLut lut)
+	{
+		Console.WriteLine("--- export: a run of the export's own, nothing stored");
+		var project = new Project();
+		project.Scene.Width = 64;
+		project.Scene.Height = 48;
+		// 41 steps, a frame every 3: 14 frames, the last after step 39, with two steps left over after it
+		project.Simulation.Steps = 41;
+		project.Simulation.VisualizeEvery = 3;
+		Source source = project.AddSource();
+		source.X = 20;
+		source.Y = 24;
+		source.Frequency = 120;
+		Probe point = project.AddProbe(40, 20);
+		Probe line = project.AddProbe(10, 30);
+		line.Kind = ProbeKind.Line;
+		line.BX = 50;
+		line.BY = 36;
+		line.Layer = ProbeLayer.Intensity;
+		project.Normalize();
+		foreach (bool gpu in (bool[])[false, true])
+		{
+			RunSpec spec = RunSpec.Create(project, null, preferGpu: gpu, trackIntensity: true, PreviewQuality.Full);
+			string name = gpu ? "gpu" : "cpu";
+			using var store = FrameStore.Create(Path.Combine(folder, "own-" + name + FrameCache.Extension), spec.Shape, spec.Layers, spec.StoredFrameCount, spec.CaptureEvery);
+			using var run = new SimulationRun(spec, store, null);
+			run.Start();
+			if (!run.Completion.Wait(60000) || store.Count != 14)
+			{
+				check(false, $"export run ({name}): a stored run of 14 frames to compare with");
+				continue;
+			}
+			string engine = run.EngineDescription;
+			using var own = new ExportRun(spec);
+			check(own.Count == 14 && own.Has(FrameLayer.Intensity) && own.Shape.SameLayoutAs(store.Shape) && own.Traces.Length == 2 && own.StepsDone == 0,
+				$"export run ({name}): 14 frames of the store's shape, nothing computed before the first is asked for");
+			var mine = new Half[64 * 48];
+			var stored = new Half[64 * 48];
+			int differing = 0;
+			bool tracesFollow = true;
+			for (int frame = 0; frame < own.Count; frame++)
+			{
+				foreach (FrameLayer layer in (FrameLayer[])[FrameLayer.Field, FrameLayer.Intensity])
+				{
+					if (!own.CopyLayer(frame, layer, mine) || !store.CopyLayer(frame, layer, stored) || !MemoryMarshal.AsBytes(mine.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(stored.AsSpan())))
+					{
+						differing++;
+					}
+				}
+				// at frame k the recordings stand where a graph box of that frame reads them: the series up to its step, its profile there
+				int steps = frame * spec.VisualizeEvery + 1;
+				tracesFollow &= own.StepsDone == steps && own.Traces[0].Series.Count == steps && own.Traces[1].Profiles.Count == frame + 1
+					&& own.Traces[0].Series.Values.AsSpan(0, steps).SequenceEqual(run.Traces[0].Series.Values.AsSpan(0, steps))
+					&& own.Traces[1].Profiles[frame].AsSpan().SequenceEqual(run.Traces[1].Profiles[frame]);
+			}
+			check(differing == 0, $"export run ({name}, {engine}): its 14 frames are the stored run's, both planes bit for bit ({differing} planes differ)");
+			check(tracesFollow, $"export run ({name}): at every frame the probes' recordings stand at that frame, value for value the stored run's");
+			bool backwards = false;
+			try
+			{
+				own.CopyLayer(3, FrameLayer.Field, mine);
+			}
+			catch (InvalidOperationException)
+			{
+				backwards = true;
+			}
+			check(backwards, $"export run ({name}): a frame before the one last handed out is refused");
+			own.RunToEnd(CancellationToken.None);
+			check(own.StepsDone == 41 && own.Traces[0].Series.Count == run.Traces[0].Series.Count && own.Traces[0].Series.Count == 41
+				&& own.Traces[0].Series.Values.AsSpan(0, 41).SequenceEqual(run.Traces[0].Series.Values.AsSpan(0, 41)) && own.Traces[1].Profiles.Count == run.Traces[1].Profiles.Count,
+				$"export run ({name}): run to its end it holds the whole recording, the two steps after the last frame with it");
+
+			// the probes alone, no frame taken: what a probe's CSV needs
+			using (var probes = new ExportRun(spec))
+			{
+				probes.RunToEnd(CancellationToken.None);
+				check(probes.Traces[0].Series.Count == 41 && probes.Traces[0].Series.Values.AsSpan(0, 41).SequenceEqual(run.Traces[0].Series.Values.AsSpan(0, 41))
+					&& probes.Traces[1].Profiles.Count == 14 && probes.Traces[1].Profiles[13].AsSpan().SequenceEqual(run.Traces[1].Profiles[13]),
+					$"export run ({name}): run for its probes alone, the recordings are the stored run's");
+			}
+
+			// a job fed by an export run against one fed by the store: frames 2 to 9 of the field as AVI and the intensity's data as OpenEXR
+			long[] sizes = new long[2];
+			var seen = new List<(int Frame, int Samples)>[] { [], [] };
+			byte[][] avi = new byte[2][];
+			byte[][] exr = new byte[2][];
+			for (int pass = 0; pass < 2; pass++)
+			{
+				using ExportRun? feeding = pass == 1 ? new ExportRun(spec) : null;
+				IFrameSource frames = feeding != null ? feeding : store;
+				ProbeTrace[] traces = feeding != null ? feeding.Traces : run.Traces;
+				string tag = name + (pass == 1 ? "-own" : "-store");
+				string aviPath = Path.Combine(folder, tag + ".avi");
+				string exrPath = Path.Combine(folder, tag + ".exr");
+				List<(int Frame, int Samples)> log = seen[pass];
+				// the decoration reads the recording as a graph box does: up to the frame's step
+				var field = new ExportLayer(FrameLayer.Field, lut, 30f, null, 0, (frame, pixels) =>
+				{
+					ProbeGraphData data = ProbeGraphData.At(traces[0], frame * spec.VisualizeEvery, frame);
+					log.Add((frame, data.Count));
+					pixels.Span[0] = unchecked((int)0xFF000000) | (BitConverter.SingleToInt32Bits(data.Values![data.Count - 1]) & 0xFFFFFF);
+				});
+				var job = new ExportJob(frames, 2, 9,
+				[
+					new ExportTarget(field, aviPath, () => ExportFormats.Open(ExportFormat.Avi, aviPath, 64, 48, 30, 70, 8)),
+					new ExportTarget(new ExportLayer(FrameLayer.Intensity, lut, 30f, null, 0, null), ExportFormats.SequenceFolder(exrPath), () => ExportFormats.Open(ExportFormat.ExrRoot, exrPath, 64, 48, 30, 70, 8, 2)),
+				], null);
+				job.Start();
+				bool done = job.Completion.Wait(60000) && job.State == ExportState.Completed && job.FramesDone == 8;
+				check(done, $"export run ({name}): a job fed by {(pass == 1 ? "an export run" : "the store")} completes, 8 frames" + (job.Error != null ? " (" + job.Error.Message + ")" : ""));
+				avi[pass] = done ? File.ReadAllBytes(aviPath) : [];
+				string last = Path.Combine(folder, tag, tag + "_0009.exr");
+				exr[pass] = File.Exists(last) ? File.ReadAllBytes(last) : [];
+			}
+			check(avi[0].Length > 1000 && avi[0].AsSpan().SequenceEqual(avi[1]), $"export run ({name}): the field's AVI is byte for byte the one written from the store, the decoration's pixel of the probe's value with it ({avi[0].Length} and {avi[1].Length} bytes)");
+			check(exr[0].Length > 1000 && exr[0].AsSpan().SequenceEqual(exr[1]), $"export run ({name}): the intensity's OpenEXR of frame 9 is byte for byte the one written from the store");
+			check(seen[1].Count == 8 && seen[0].SequenceEqual(seen[1]) && seen[1].TrueForAll(entry => entry.Samples == entry.Frame * spec.VisualizeEvery + 1),
+				$"export run ({name}): each frame's decoration found the recording up to that frame's step, as it does over the store");
+		}
 	}
 
 	/// <summary>Per-frame cost of every encoder at a given size, for `-- bench-export [w h]`.</summary>

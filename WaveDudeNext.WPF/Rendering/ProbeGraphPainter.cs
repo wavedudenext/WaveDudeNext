@@ -53,18 +53,22 @@ public sealed class ProbeGraphPainter
 	private ProbeGraphStyle? _style;
 
 	/// <param name="project">The project whose active probes are drawn.</param>
-	/// <param name="run">The run whose recordings the graphs show; its size is the frame size.</param>
+	/// <param name="spec">The run exported; its size is the frame size.</param>
+	/// <param name="traces">
+	/// The probes' recordings the graphs show, in the spec's probe order: a preview run's, or an export run's, which
+	/// hold each recording up to the frame being painted (a graph shows it up to its frame either way).
+	/// </param>
 	/// <param name="graphs">Draw the graph boxes.</param>
 	/// <param name="markers">Draw the markers.</param>
-	public ProbeGraphPainter(Project project, SimulationRun run, bool graphs, bool markers)
+	public ProbeGraphPainter(Project project, RunSpec spec, IReadOnlyList<ProbeTrace> traces, bool graphs, bool markers)
 	{
 		_graphs = graphs;
 		_markers = markers;
-		_items = [.. project.Probes.Where(probe => probe.Active).Select((probe, i) => (probe.Clone(), TraceOf(run.Spec.Probes, run.Traces, probe), i + 1))];
-		_every = run.Spec.VisualizeEvery;
-		_totalSteps = Math.Max(1, run.Spec.Steps);
-		_width = run.Spec.Width;
-		_height = run.Spec.Height;
+		_items = [.. project.Probes.Where(probe => probe.Active).Select((probe, i) => (probe.Clone(), TraceOf(spec.Probes, traces, probe), i + 1))];
+		_every = spec.VisualizeEvery;
+		_totalSteps = Math.Max(1, spec.Steps);
+		_width = spec.Width;
+		_height = spec.Height;
 	}
 
 	/// <summary>The decoration for a layer: null when nothing is to be drawn or no active probe sits on it.</summary>
@@ -194,9 +198,9 @@ public sealed class ProbeGraphPainter
 	}
 
 	/// <summary>The trace of the model probe among a spec's probes (matched by <see cref="ProbeSpec.Origin"/>), or null when it was not recorded.</summary>
-	private static ProbeTrace? TraceOf(ImmutableArray<ProbeSpec> specs, ProbeTrace[] traces, Probe probe)
+	private static ProbeTrace? TraceOf(ImmutableArray<ProbeSpec> specs, IReadOnlyList<ProbeTrace> traces, Probe probe)
 	{
-		for (int i = 0; i < specs.Length && i < traces.Length; i++)
+		for (int i = 0; i < specs.Length && i < traces.Count; i++)
 		{
 			if (ReferenceEquals(specs[i].Origin, probe))
 			{

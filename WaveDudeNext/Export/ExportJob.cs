@@ -69,8 +69,11 @@ public sealed record ExportTarget(ExportLayer Layer, string Output, Func<IFrameS
 }
 
 /// <summary>
-/// Renders a range of a run's stored frames into one or more sinks: a render thread reads each target's
-/// plane of 16-bit samples from the <see cref="FrameStore"/>, colours it with <see cref="FrameRenderer"/>, adds the outline
+/// Renders a range of a run's frames into one or more sinks. The frames come from a preview run's
+/// <see cref="FrameStore"/>, or from an <see cref="ExportRun"/>, which computes each as it is asked for and stores
+/// none (2026-11-15); the job reads both alike, frame by frame in rising order, on its render thread, which so
+/// is the thread that drives an export run's engine. That thread reads each target's
+/// plane of 16-bit samples from the frames, colours it with <see cref="FrameRenderer"/>, adds the outline
 /// (<see cref="GlowingEdges.BlendAdditive"/>) and the decoration, and hands the pixels to a sink thread,
 /// which opens the sinks, encodes and writes; the two overlap, so a frame's encoding costs no rendering time
 /// (2026-10-14). Progress and the final state are published through the <see cref="SynchronizationContext"/>
@@ -96,12 +99,12 @@ public sealed class ExportJob : INotifyPropertyChanged
 	private TimeSpan _elapsed;
 	private Exception? _error;
 
-	/// <param name="store">The frames; read from <paramref name="firstFrame"/> to <paramref name="lastFrame"/>, which must exist by the time they are reached.</param>
+	/// <param name="frames">The frames, a run's store or an export run; read in order from <paramref name="firstFrame"/> to <paramref name="lastFrame"/>, which must exist by the time they are reached.</param>
 	/// <param name="firstFrame">First frame index.</param>
 	/// <param name="lastFrame">Last frame index, inclusive.</param>
 	/// <param name="targets">The outputs; their sinks are opened when the job starts and closed when it ends, however it ends.</param>
 	/// <param name="context">Where properties are published; null for the worker.</param>
-	public ExportJob(FrameStore store, int firstFrame, int lastFrame, IReadOnlyList<ExportTarget> targets, SynchronizationContext? context)
+	public ExportJob(IFrameSource frames, int firstFrame, int lastFrame, IReadOnlyList<ExportTarget> targets, SynchronizationContext? context)
 	{
 		if (firstFrame < 0 || lastFrame < firstFrame)
 		{
@@ -110,7 +113,7 @@ public sealed class ExportJob : INotifyPropertyChanged
 		// every export needs the 16-bit samples (2026-10-23, the user's choice): a picture takes every level of the
 		// gradient from them, which an 8-bit store's 255 palette entries cannot give, and a data sink (OpenEXR) writes
 		// them. Render refuses a store of palette indices once the sinks are open (from 2026-10-18 it had taken one for pictures)
-		Store = store;
+		Frames = frames;
 		FirstFrame = firstFrame;
 		LastFrame = lastFrame;
 		Targets = targets;
@@ -124,7 +127,7 @@ public sealed class ExportJob : INotifyPropertyChanged
 	public event EventHandler? Finished;
 
 	/// <summary>The frames being exported.</summary>
-	public FrameStore Store { get; }
+	public IFrameSource Frames { get; }
 
 	/// <summary>First frame of the range.</summary>
 	public int FirstFrame { get; }
@@ -217,8 +220,8 @@ public sealed class ExportJob : INotifyPropertyChanged
 		var stopwatch = Stopwatch.StartNew();
 		ExportState final = ExportState.Completed;
 		Exception? error = null;
-		int width = Store.Width;
-		int height = Store.Height;
+		int width = Frames.Width;
+		int height = Frames.Height;
 		// the buffer pools: rendered pixels for the picture sinks, the store's halves for the data sinks (OpenEXR);
 		// filled once the sinks are open and have said which they take
 		int buffers = Targets.Count * QueueDepth + 1;
@@ -308,7 +311,7 @@ public sealed class ExportJob : INotifyPropertyChanged
 			sinksReady.Wait();
 			if (sinkError == null)
 			{
-				if (Store.Format != FrameFormat.Half)
+				if (Frames.Format != FrameFormat.Half)
 				{
 					throw new InvalidOperationException("An export needs a 16-bit run; this store holds palette indices.");
 				}
@@ -337,19 +340,19 @@ public sealed class ExportJob : INotifyPropertyChanged
 					{
 						// a data sink: the plane as stored, nothing rendered or drawn
 						Half[] plane = freeHalves.Take();
-						if (frame >= Store.Count || !Store.CopyLayer(frame, layer.Layer, plane))
+						if (frame >= Frames.Count || !Frames.CopyLayer(frame, layer.Layer, plane))
 						{
-							throw new InvalidOperationException($"Frame {frame} is not in the store (it holds {Store.Count}).");
+							throw new InvalidOperationException($"Frame {frame} is not in the store (it holds {Frames.Count}).");
 						}
 						queue.Add(new Item(frame, t, null, plane));
 						continue;
 					}
-					if (frame >= Store.Count || !Store.CopyLayer(frame, layer.Layer, values))
+					if (frame >= Frames.Count || !Frames.CopyLayer(frame, layer.Layer, values))
 					{
-						throw new InvalidOperationException($"Frame {frame} is not in the store (it holds {Store.Count}).");
+						throw new InvalidOperationException($"Frame {frame} is not in the store (it holds {Frames.Count}).");
 					}
 					int[] pixels = free.Take();
-					FrameRenderer.Render(values, width, height, layer.Lut, Store.KindOf(layer.Layer), layer.Brightness, pixels);
+					FrameRenderer.Render(values, width, height, layer.Lut, Frames.KindOf(layer.Layer), layer.Brightness, pixels);
 					Finish(layer, frame, pixels, width, height);
 					queue.Add(new Item(frame, t, pixels, null));
 				}

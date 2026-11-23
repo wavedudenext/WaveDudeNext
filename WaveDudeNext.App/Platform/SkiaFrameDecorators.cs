@@ -17,6 +17,7 @@
 // <https://www.gnu.org/licenses/>.
 
 using WaveDudeNext.Model;
+using WaveDudeNext.Probes;
 using WaveDudeNext.Runs;
 using WaveDudeNext.UI;
 
@@ -31,10 +32,10 @@ namespace WaveDudeNext.App.Platform;
 public sealed class SkiaFrameDecorators : IFrameDecorators
 {
 	/// <inheritdoc/>
-	public IFrameDecorator Create(Project project, SimulationRun run) => new Decorator(project, run);
+	public IFrameDecorator Create(Project project, RunSpec spec, IReadOnlyList<ProbeTrace> traces) => new Decorator(project, spec, traces);
 
-	private sealed class Decorator(Project project, SimulationRun run) : IFrameDecorator
+	private sealed class Decorator(Project project, RunSpec spec, IReadOnlyList<ProbeTrace> traces) : IFrameDecorator
 	{
-		public Action<int, Memory<int>>? For(FrameLayer layer) => ExportDecorations.For(project, run.Spec, run.Traces, layer);
+		public Action<int, Memory<int>>? For(FrameLayer layer) => ExportDecorations.For(project, spec, traces, layer);
 	}
 }

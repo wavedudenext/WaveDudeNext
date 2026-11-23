@@ -125,13 +125,15 @@ public sealed class RunHost : ObservableObject
 	/// thread, <see cref="IsStarting"/> being true until it does.
 	/// </summary>
 	/// <param name="automatic">Started after an edit rather than by the user: the preview keeps its position.</param>
-	/// <param name="trackIntensity">Store the intensity plane whatever the project needs (an export of the intensity asks for it).</param>
-	/// <param name="fullQuality">Capture every cell of every frame as a half whatever the View menu says (an export needs that).</param>
-	/// <param name="intensityRoot">With <paramref name="fullQuality"/>: store the intensity as its square root, the preview's, or as I (an OpenEXR export of I).</param>
 	/// <returns>Whether a run was started: false when the memory warning was cancelled, or when another start still waits for its answer.</returns>
 	/// <exception cref="RunSpecException">The project cannot run as it is (no scene image, for one); carried by the task, as the others are.</exception>
 	/// <exception cref="IOException">The cache drive has no room for the frames that do not fit in memory, or its folder cannot be made.</exception>
-	public async Task<bool> StartAsync(bool automatic = false, bool trackIntensity = false, bool fullQuality = false, bool intensityRoot = true)
+	/// <remarks>
+	/// A preview run, at the View menu's quality: the run the preview plays and scrubs. An export that needs other
+	/// frames than its store holds computes them by a run of its own (<see cref="ExportRun"/>, 2026-11-15); until then
+	/// this method also made the full-quality runs of the exports, which stored their whole sequence.
+	/// </remarks>
+	public async Task<bool> StartAsync(bool automatic = false)
 	{
 		if (_isStarting)
 		{
@@ -142,8 +144,8 @@ public sealed class RunHost : ObservableObject
 		{
 			Logger.Info("Running on the CPU: 'Use the GPU' is off in the Simulation menu");
 		}
-		PreviewQuality quality = fullQuality ? PreviewQuality.Full with { IntensityRoot = intensityRoot } : PreviewQualitySetting;
-		RunSpec spec = RunSpec.Create(_document.Project, _scene.Load(), Settings.Default.UseGpu, trackIntensity, quality);
+		PreviewQuality quality = PreviewQualitySetting;
+		RunSpec spec = RunSpec.Create(_document.Project, _scene.Load(), Settings.Default.UseGpu, trackIntensity: false, quality);
 		// the frames stay in memory up to the budget (the user's share of the RAM, capped by what is free now); only
 		// the rest needs room on the cache drive (2026-10-14). The outgoing run's frames count as free: Discard
 		// below gives them back, and the new store allocates its memory tier only once they are gone (2026-10-16).
@@ -152,11 +154,11 @@ public sealed class RunHost : ObservableObject
 		long budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent, _run?.Store.HeldBytes ?? 0);
 		int ramFrames = Math.Min(spec.StoredFrameCount, FrameStore.FramesInBudget(spec.Shape, spec.Layers, budget));
 		// a preview run that does not fit asks first (the memory warning, 2026-11-03, the user's design: F5, Play and the
-		// automatic re-run alike, so no spill is silent; an export's run must be full quality and never asks). The choice
+		// automatic re-run alike, so no spill is silent). The choice
 		// lands in the View menu settings, so the scratch frames match the run and later runs fit without asking; the
 		// settings' change marks the old run stale and schedules a scratch frame and a re-run, as the View menu's does, and
 		// the run started below makes that re-run find nothing stale
-		if (ramFrames < spec.StoredFrameCount && !fullQuality && Settings.Default.WarnWhenRamInsufficient)
+		if (ramFrames < spec.StoredFrameCount && Settings.Default.WarnWhenRamInsufficient)
 		{
 			// the budget with the RAM cache size at Auto, the warning's fourth lever: the budget itself when it is Auto already
 			long autoBudget = Settings.Default.FrameMemoryPercent > FrameMemory.Automatic ? FrameMemory.Budget(FrameMemory.Automatic, _run?.Store.HeldBytes ?? 0) : budget;
@@ -185,7 +187,7 @@ public sealed class RunHost : ObservableObject
 				// snapshotted again, whatever the choice (2026-11-09; only for another quality before): the application was
 				// live while the question was open, so an edit that came without input (the scene image re-embedded from
 				// its file) is in the run, which is marked fresh below
-				spec = RunSpec.Create(_document.Project, _scene.Load(), Settings.Default.UseGpu, trackIntensity, quality);
+				spec = RunSpec.Create(_document.Project, _scene.Load(), Settings.Default.UseGpu, trackIntensity: false, quality);
 				budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent, _run?.Store.HeldBytes ?? 0);
 				ramFrames = Math.Min(spec.StoredFrameCount, FrameStore.FramesInBudget(spec.Shape, spec.Layers, budget));
 				Settings.Default.TrySave();

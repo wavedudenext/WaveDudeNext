@@ -38,14 +38,24 @@ public sealed record ExportFailure(string Key, Exception? Error);
 /// before): the Save dialog picks the format by its filter and the name, pre-set to the project's name with
 /// <c>_field</c> / <c>_intensity</c> in the folder <see cref="ExportPaths"/> proposes; "both" writes two outputs from one
 /// name; a still writes the frame the preview shows as one image file (<c>_field_0655</c>, the frame number padded as
-/// a sequence names its files). Every export renders from the run's store with the display settings as they are, the
+/// a sequence names its files). Every export renders full-quality frames with the display settings as they are, the
 /// outline when opted in and what the application draws over the frames (<see cref="IFrameDecorators"/>: the probe
 /// graph boxes and markers, the source markers); a still shows exactly what a video export would show at that frame
-/// (the user's rule), never the scratch frame. There is always a run to export: when there is none, it is stale, it is a
-/// reduced preview or it lacks the intensity plane, a run is started first (like Play does) and the export waits for it
-/// (<see cref="IsWaiting"/>). The <see cref="ExportJob"/> works on its own thread and reports to the busy indicator;
-/// Esc cancels it (<see cref="Cancel"/>). Runs are not started or replaced while an export reads the store. A probe's
-/// recording goes out as a CSV file the same way (2026-10-18): the dialog, the full run, then the run's trace of the
+/// (the user's rule), never the scratch frame.
+/// <para>
+/// <b>Preview runs and export runs</b> (2026-11-15, the user's design). The frames come from the preview's run where
+/// its store holds what the export needs (fresh, complete, full resolution, every frame, 16-bit, the plane asked for;
+/// one in progress is waited for, <see cref="IsWaiting"/>). Where it does not, the export computes them itself: an
+/// <see cref="ExportRun"/> steps the simulation and hands the job each frame as it is rendered and written, and none
+/// is stored. Until then a full-quality preview run was made first: its whole sequence had to fit the machine's
+/// memory and cache whatever the View menu had been set to for that machine (10 GB for the default project, beyond
+/// a browser page altogether), and it took the place of the run the preview showed. Now an export needs an engine,
+/// one frame and the files it writes, and leaves the preview's run alone; the pictures are the same either way.
+/// </para>
+/// The <see cref="ExportJob"/> works on its own thread and reports to the busy indicator; Esc cancels it
+/// (<see cref="Cancel"/>). Preview runs are not started or replaced while an export is in progress. A probe's
+/// recording goes out as a CSV file the same way (2026-10-18): the dialog, the recording over the whole run (the
+/// preview run's, or an export run's of every step and no frame), then the trace of the
 /// probe written by <see cref="ProbeCsv"/> on the UI thread (a few megabytes at most). Export last (2026-10-28) is the
 /// session's last run export again, no dialog and no question. A failure is raised as <see cref="Failed"/> for the
 /// application to show; the harness hook <c>WAVEDUDE_EXPORT_PATH</c> stands in for the dialog. UI thread only.
@@ -65,6 +75,8 @@ public sealed class Exporter : ObservableObject
 	private readonly SynchronizationContext _uiThread;
 	private ExportJob? _job;
 	private bool _isWaiting;
+	/// <summary>Ends the run that computes a probe's recording for its CSV; null while none does.</summary>
+	private CancellationTokenSource? _probeRun;
 
 	/// <param name="document">The open project: what is exported, and the name its files take.</param>
 	/// <param name="runs">The run exported, started first when the current one will not do.</param>
@@ -227,7 +239,11 @@ public sealed class Exporter : ObservableObject
 		await StartAsync(last.Field, last.Intensity, still: false, stillFrame: 0, last.Format, last.Path, ask: false);
 	}
 
-	/// <summary>The Save dialog, the full run (started first when there is none or it is stale, like the pictures), the probe's trace as CSV.</summary>
+	/// <summary>
+	/// The Save dialog, the probe's recording over the whole run, and that as CSV. The recording is the preview run's
+	/// where that run serves; else a run of the export's own computes it, every step and no frame, on a thread of the
+	/// pool, the busy indicator showing the wait and Esc ending it.
+	/// </summary>
 	public async Task ExportProbeAsync(Probe probe)
 	{
 		if (IsExporting)
@@ -256,43 +272,92 @@ public sealed class Exporter : ObservableObject
 		}
 		_paths.ProbeExported(chosen);
 		Logger.Debug("Export: probe '{Probe}' ({Kind}, {Layer}, {Measurement}) as CSV to {Path}", probe.Name, probe.Kind, probe.Layer, probe.Measurement, chosen);
-		SimulationRun? run = await EnsureRunAsync(intensity: probe.Layer == ProbeLayer.Intensity, needsHalves: false);
-		if (run == null)
+		bool intensity = probe.Layer == ProbeLayer.Intensity;
+		SimulationRun? stored = await ServingRunAsync(intensity, needsHalves: false, intensityRoot: null);
+		RunSpec spec;
+		IReadOnlyList<ProbeTrace> traces;
+		ExportRun? own = null;
+		if (stored != null)
 		{
-			return;
+			spec = stored.Spec;
+			traces = stored.Traces;
 		}
-		ProbeTrace? trace = null;
-		for (int i = 0; i < run.Spec.Probes.Length && i < run.Traces.Length; i++)
+		else
 		{
-			if (ReferenceEquals(run.Spec.Probes[i].Origin, probe))
+			// a run of the export's own, for the probes alone: every step, no frame captured or stored
+			IsWaiting = true;
+			_probeRun = new CancellationTokenSource();
+			try
 			{
-				trace = run.Traces[i];
+				spec = RunSpec.Create(Project, _scene.Load(), Settings.Default.UseGpu, trackIntensity: intensity, PreviewQuality.Full);
+				own = new ExportRun(spec);
+				ExportRun run = own;
+				CancellationToken cancel = _probeRun.Token;
+				await Task.Run(() => run.RunToEnd(cancel));
+				traces = own.Traces;
 			}
-		}
-		if (trace == null)
-		{
-			Logger.Error("Probe '{Probe}' is not in the run (removed or disabled while it was waited for)", probe.Name);
-			Failed?.Invoke(this, new ExportFailure("ExportError", null));
-			return;
+			catch (OperationCanceledException)
+			{
+				Logger.Warn("Probe export cancelled while its run was computed; nothing was written");
+				own?.Dispose();
+				return;
+			}
+			catch (Exception ex)
+			{
+				// whatever keeps the run from being made or its engine from stepping: shown as a run's error is
+				Logger.Error(ex, "The export's run failed: {Message}", ex.Message);
+				own?.Dispose();
+				Failed?.Invoke(this, new ExportFailure("RunError", ex));
+				return;
+			}
+			finally
+			{
+				_probeRun.Dispose();
+				_probeRun = null;
+				IsWaiting = false;
+			}
 		}
 		try
 		{
-			int rows = ProbeCsv.Write(chosen, probe, trace, run.Spec.VisualizeEvery, run.Spec.FrameStride);
-			Logger.Info("Probe data written: {Rows} rows of '{Probe}' to {Path}", rows, probe.Name, chosen);
+			ProbeTrace? trace = null;
+			for (int i = 0; i < spec.Probes.Length && i < traces.Count; i++)
+			{
+				if (ReferenceEquals(spec.Probes[i].Origin, probe))
+				{
+					trace = traces[i];
+				}
+			}
+			if (trace == null)
+			{
+				Logger.Error("Probe '{Probe}' is not in the run (removed or disabled while it was waited for)", probe.Name);
+				Failed?.Invoke(this, new ExportFailure("ExportError", null));
+				return;
+			}
+			int rows = ProbeCsv.Write(chosen, probe, trace, spec.VisualizeEvery, spec.FrameStride);
+			Logger.Info("Probe data written: {Rows} rows of '{Probe}' to {Path}", rows, probe.Name, _dialogs.Shown(chosen));
 		}
 		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 		{
 			Logger.Error(ex, "The probe data could not be written: {Message}", ex.Message);
 			Failed?.Invoke(this, new ExportFailure("ExportError", ex));
 		}
+		finally
+		{
+			own?.Dispose();
+		}
 	}
 
-	/// <summary>Cancels the job in progress, if any; its outputs hold what was written.</summary>
-	public void Cancel() => _job?.Cancel();
+	/// <summary>Cancels the job in progress, if any (its outputs hold what was written), and a run that computes a probe's recording for its CSV.</summary>
+	public void Cancel()
+	{
+		_job?.Cancel();
+		_probeRun?.Cancel();
+	}
 
 	/// <summary>Cancels a running export and waits briefly for its files to close; for closing the application.</summary>
 	public void Shutdown()
 	{
+		_probeRun?.Cancel();
 		ExportJob? job = _job;
 		if (job?.IsActive != true)
 		{
@@ -306,7 +371,7 @@ public sealed class Exporter : ObservableObject
 	}
 
 	/// <summary>
-	/// The run (started first when there is none or it is stale), the targets, the job: the pictures <paramref name="field"/>
+	/// The frames (the preview run's, or a run of the export's own), the targets, the job: the pictures <paramref name="field"/>
 	/// and <paramref name="intensity"/> as <paramref name="format"/> at <paramref name="chosen"/>, whose extension is the
 	/// format's; a <paramref name="still"/> is the one frame <paramref name="stillFrame"/> as a single image file.
 	/// </summary>
@@ -377,15 +442,41 @@ public sealed class Exporter : ObservableObject
 				}
 			}
 		}
-		SimulationRun? run = await EnsureRunAsync(intensity, needsHalves: true, intensityRoot: intensity ? ExportFormats.IntensityRootFor(format) : null);
-		if (run == null)
+		// the frames: the preview's run where its stored frames serve as they are; else a run of the export's own, which
+		// computes each frame as it is written and stores none (2026-11-15, the user's design; until then a full-quality
+		// preview run was made first, whose frames the machine had to hold, and which took the preview's run's place)
+		bool? root = intensity ? ExportFormats.IntensityRootFor(format) : null;
+		SimulationRun? stored = await ServingRunAsync(intensity, needsHalves: true, root);
+		ExportRun? own = null;
+		RunSpec spec;
+		IFrameSource frames;
+		IReadOnlyList<ProbeTrace> traces;
+		if (stored != null)
 		{
-			return;
+			spec = stored.Spec;
+			frames = stored.Store;
+			traces = stored.Traces;
+		}
+		else
+		{
+			try
+			{
+				spec = RunSpec.Create(Project, _scene.Load(), Settings.Default.UseGpu, trackIntensity: intensity, PreviewQuality.Full with { IntensityRoot = root ?? true });
+			}
+			catch (Exception ex) when (ex is RunSpecException or IOException or UnauthorizedAccessException or NotSupportedException)
+			{
+				Logger.Error(ex, "The export's run could not start: {Message}", ex.Message);
+				Failed?.Invoke(this, new ExportFailure("RunError", ex));
+				return;
+			}
+			own = new ExportRun(spec);
+			frames = own;
+			traces = own.Traces;
 		}
 		// the range in frames, from the model's steps like the preview's in/out points; a still is the shown frame
 		Display display = Project.Display;
-		int every = run.Spec.VisualizeEvery;
-		int lastFrame = run.Spec.FrameCount - 1;
+		int every = spec.VisualizeEvery;
+		int lastFrame = spec.FrameCount - 1;
 		int first;
 		int last;
 		if (still)
@@ -398,7 +489,8 @@ public sealed class Exporter : ObservableObject
 			last = display.ExportTo <= 0 ? lastFrame : Math.Clamp(display.ExportTo / every, first, lastFrame);
 		}
 		int frameCount = last - first + 1;
-		Logger.Debug("Export range: frames {First} to {Last} ({Count}) of the run's {Total}, {Width}×{Height}, store {Store}", first, last, frameCount, run.Spec.FrameCount, run.Spec.Width, run.Spec.Height, run.Store.Path);
+		Logger.Debug("Export range: frames {First} to {Last} ({Count}) of the run's {Total}, {Width}×{Height}, {Source}", first, last, frameCount, spec.FrameCount, spec.Width, spec.Height,
+			stored != null ? "from the preview run's store " + stored.Store.Path : "computed by a run of the export's own, none stored");
 		// the targets: the layer's colours and outline, what the application draws over the frames, the sink
 		var targets = new List<ExportTarget>();
 		try
@@ -407,21 +499,21 @@ public sealed class Exporter : ObservableObject
 			if (display.Field.OverlayInExport || display.Intensity.OverlayInExport)
 			{
 				ScenePixels? scene = _scene.Load();
-				if (scene != null && scene.Width == run.Spec.Width && scene.Height == run.Spec.Height)
+				if (scene != null && scene.Width == spec.Width && scene.Height == spec.Height)
 				{
 					edges = GlowingEdges.Compute(scene.Bgra, scene.Width, scene.Height, scene.StrideBytes);
 				}
 				Logger.Debug("Export outline: {State}", edges != null ? "computed from the scene image" : "none (no image scene)");
 			}
-			IFrameDecorator decorator = _decorators.Create(Project, run);
+			IFrameDecorator decorator = _decorators.Create(Project, spec, traces);
 			foreach ((FrameLayer layer, string path) in outputs)
 			{
 				DisplayLayer settings = layer == FrameLayer.Field ? display.Field : display.Intensity;
 				ColorLut lut = ColorSchemeCatalog.Instance.LutFor(Project, settings.ColorScheme, settings.BlackLevel);
 				var exportLayer = new ExportLayer(layer, lut, (float)settings.Brightness, settings.OverlayInExport ? edges : null, settings.OverlayGain, decorator.For(layer));
 				// the sink is opened by the job on its thread (a Media Foundation writer must stay on one thread)
-				int width = run.Spec.Width;
-				int height = run.Spec.Height;
+				int width = spec.Width;
+				int height = spec.Height;
 				int fps = display.Video.Fps;
 				int quality = display.Video.Quality;
 				string output = !still && ExportFormats.IsSequence(format) ? ExportFormats.SequenceFolder(path) : path;
@@ -432,7 +524,7 @@ public sealed class Exporter : ObservableObject
 				if (ExportFormats.IsData(format))
 				{
 					Logger.Debug("Export target {Layer}: the stored 16-bit values as OpenEXR{Samples} (no colours, outline or boxes), to {Output}",
-						layer, layer == FrameLayer.Intensity ? (run.Store.IntensityRoot ? ", the intensity's square root" : ", the intensity itself") : "", output);
+						layer, layer == FrameLayer.Intensity ? (frames.IntensityRoot ? ", the intensity's square root" : ", the intensity itself") : "", output);
 				}
 				else
 				{
@@ -452,92 +544,74 @@ public sealed class Exporter : ObservableObject
 		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or RunSpecException)
 		{
 			Logger.Error(ex, "The export could not start: {Message}", ex.Message);
+			own?.Dispose();
 			Failed?.Invoke(this, new ExportFailure("ExportError", ex));
 			return;
 		}
-		var job = new ExportJob(run.Store, first, last, targets, _uiThread);
+		var job = new ExportJob(frames, first, last, targets, _uiThread);
 		job.PropertyChanged += OnJobPropertyChanged;
-		job.Finished += (_, _) => OnJobFinished(job);
+		job.Finished += (_, _) =>
+		{
+			// the job's threads have ended: the export's own run lets its engine go
+			own?.Dispose();
+			OnJobFinished(job);
+		};
 		Job = job;
-		Logger.Info("Export started: frames {First} to {Last} ({Count}) of {Width}×{Height} to {Outputs}",
-			first, last, frameCount, run.Spec.Width, run.Spec.Height, string.Join(", ", targets.Select(target => target.Output)));
+		Logger.Info("Export started: frames {First} to {Last} ({Count}) of {Width}×{Height} to {Outputs}{Run}",
+			first, last, frameCount, spec.Width, spec.Height, string.Join(", ", targets.Select(target => _dialogs.Shown(target.Output))), own != null ? ", each frame computed as it is written" : "");
 		job.Start();
 	}
 
 	/// <summary>
-	/// A completed run the export can read: the current one when it is fresh, finished or in progress, and
-	/// holds the intensity plane if asked for; otherwise a run is started and awaited. Null when no run could
-	/// be had (logged, and <see cref="Failed"/> raised when the run could not start).
+	/// The preview's run when its stored frames and recordings can serve the export as they are: fresh, complete (one
+	/// in progress is waited for), of full quality, and holding the plane asked for. Null when it cannot, which the log
+	/// says with the reason: the export then computes what it needs by a run of its own (<see cref="ExportRun"/>),
+	/// and the preview's run stays what it is. Until 2026-11-15 a full-quality preview run was started here instead,
+	/// with its frames in the store, whatever the View menu and the machine's memory said.
 	/// </summary>
 	/// <param name="intensity">The run must hold the intensity plane.</param>
 	/// <param name="needsHalves">The run must hold 16-bit samples (every picture or data export); the probe data does with the 8-bit index.</param>
 	/// <param name="intensityRoot">What the run's 16-bit intensity must hold for an OpenEXR export of it: its square root (true), the intensity (false), or either (null).</param>
-	private async Task<SimulationRun?> EnsureRunAsync(bool intensity, bool needsHalves, bool? intensityRoot = null)
+	private async Task<SimulationRun?> ServingRunAsync(bool intensity, bool needsHalves, bool? intensityRoot)
 	{
-		IsWaiting = true;
-		try
+		for (int attempt = 0; attempt < 3; attempt++)
 		{
-			for (int attempt = 0; attempt < 3; attempt++)
+			SimulationRun? run = _runs.Run;
+			// a reduced preview never serves a picture or data export: a smaller picture or skipped frames are not the
+			// run, and the 8-bit index has only the palette's 255 colours where the 16-bit samples give every level of the
+			// gradient (2026-10-23, the user's choice; from 2026-10-18 a picture export had taken an 8-bit run as it was)
+			PreviewQuality? quality = run?.Spec.Quality;
+			bool reduced = quality != null && (quality.ResolutionDivisor != 1 || quality.FrameDivisor != 1 || (quality.Format != FrameFormat.Half && needsHalves));
+			string? reason = run == null ? "there is no preview run" : _runs.IsRunStale ? "the preview run is stale" : _runs.IsProbesStale ? "the probes were edited since the preview run"
+				: reduced ? (quality!.Format != FrameFormat.Half && needsHalves && quality.ResolutionDivisor == 1 && quality.FrameDivisor == 1 ? "the export needs the 16-bit samples" : "the preview run is a reduced preview (View menu)")
+				: intensity && !run.Store.Has(FrameLayer.Intensity) ? "the preview run has no intensity plane"
+				: intensityRoot is bool root && run.Store.IntensityRoot != root ? (root ? "the export needs the intensity as its square root" : "the export needs the intensity as I, which the preview stores as its square root")
+				: !run.IsActive && run.State != RunState.Completed ? "the preview run did not complete" : null;
+			if (reason != null)
 			{
-				SimulationRun? run = _runs.Run;
-				// a reduced preview never serves a picture or data export: a smaller picture or skipped frames are not the
-				// run, and the 8-bit index has only the palette's 255 colours where the 16-bit samples give every level of the
-				// gradient (2026-10-23, the user's choice; from 2026-10-18 a picture export had taken an 8-bit run as it was)
-				PreviewQuality? quality = run?.Spec.Quality;
-				bool reduced = quality != null && (quality.ResolutionDivisor != 1 || quality.FrameDivisor != 1 || (quality.Format != FrameFormat.Half && needsHalves));
-				string? reason = run == null ? "no run" : _runs.IsRunStale ? "the run is stale" : _runs.IsProbesStale ? "the probes were edited since the run"
-					: reduced ? (quality!.Format != FrameFormat.Half && needsHalves && quality.ResolutionDivisor == 1 && quality.FrameDivisor == 1 ? "the export needs the 16-bit samples" : "the run is a reduced preview (View menu)")
-					: intensity && !run.Store.Has(FrameLayer.Intensity) ? "the run has no intensity plane"
-					: intensityRoot is bool root && run.Store.IntensityRoot != root ? (root ? "the export needs the intensity as its square root" : "the export needs the intensity as I, which the preview stores as its square root")
-					: !run.IsActive && run.State != RunState.Completed ? "the run did not complete" : null;
-				if (reason != null)
-				{
-					Logger.Debug("Export: a run is started first ({Reason})", reason);
-					// a full-quality run asks nothing, so its start is decided within the call; false means another start still
-					// waits for its memory warning's answer, and the run that one makes would not be this export's
-					if (!await _runs.StartAsync(automatic: true, trackIntensity: intensity, fullQuality: true, intensityRoot: intensityRoot ?? true))
-					{
-						Logger.Warn("Export abandoned: another run's start waits for the memory warning's answer");
-						return null;
-					}
-					run = _runs.Run;
-				}
-				else if (run!.IsActive)
-				{
-					Logger.Debug("Export: waiting for the run in progress");
-				}
-				if (run == null)
-				{
-					return null;
-				}
-				await run.Completion;
-				await WaitForState(run);
-				if (run.State == RunState.Completed && ReferenceEquals(run, _runs.Run))
-				{
-					return run;
-				}
-				if (!ReferenceEquals(run, _runs.Run))
-				{
-					// replaced meanwhile (an edit started a fresh one): look at the new one
-					Logger.Debug("Export: the run was replaced while waited for, looking again");
-					continue;
-				}
-				Logger.Warn("Export abandoned: the run ended {State}", run.State);
+				Logger.Debug("Export: computed by a run of the export's own ({Reason})", reason);
 				return null;
 			}
-			Logger.Warn("Export abandoned: the project kept changing while its run was computed");
-			return null;
+			if (run!.State == RunState.Completed)
+			{
+				Logger.Debug("Export: from the preview run's stored frames");
+				return run;
+			}
+			Logger.Debug("Export: waiting for the preview run in progress, whose frames serve");
+			IsWaiting = true;
+			try
+			{
+				await run.Completion;
+				await WaitForState(run);
+			}
+			finally
+			{
+				IsWaiting = false;
+			}
+			// looked at again: completed, replaced meanwhile (an edit started another), or ended otherwise
 		}
-		catch (Exception ex) when (ex is RunSpecException or IOException or UnauthorizedAccessException or NotSupportedException)
-		{
-			Logger.Error(ex, "The export's run could not start: {Message}", ex.Message);
-			Failed?.Invoke(this, new ExportFailure("RunError", ex));
-			return null;
-		}
-		finally
-		{
-			IsWaiting = false;
-		}
+		Logger.Debug("Export: computed by a run of the export's own (the preview run kept changing while it was waited for)");
+		return null;
 	}
 
 	/// <summary>The run's final state is posted to the UI thread after its completion task completes; wait for that post.</summary>

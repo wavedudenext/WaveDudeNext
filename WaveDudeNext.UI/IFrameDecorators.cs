@@ -16,6 +16,7 @@
 // <https://www.gnu.org/licenses/>.
 
 using WaveDudeNext.Model;
+using WaveDudeNext.Probes;
 using WaveDudeNext.Runs;
 
 namespace WaveDudeNext.UI;
@@ -24,12 +25,22 @@ namespace WaveDudeNext.UI;
 /// What the application draws over an export's frames beyond the colours and the outline: the probe graph boxes and
 /// markers and the source markers, text and shapes a UI framework rasterises (2026-11-07; each application implements
 /// it). Which of them the project's display settings want is the implementation's to read. Made on the UI thread once
-/// per export; its painters run on the export's own thread, one frame at a time.
+/// per export; its painters run on the export's own thread, one frame at a time, in rising order.
 /// </summary>
 public interface IFrameDecorators
 {
-	/// <summary>The decorator of an export of <paramref name="run"/>, for the display settings of <paramref name="project"/> as they are now.</summary>
-	IFrameDecorator Create(Project project, SimulationRun run);
+	/// <summary>
+	/// The decorator of an export of the run <paramref name="spec"/> describes, for the display settings of
+	/// <paramref name="project"/> as they are now.
+	/// </summary>
+	/// <param name="project">The project: its display settings select the decorations, its probes and sources are drawn.</param>
+	/// <param name="spec">The run exported: the frame size, the steps, the frame interval, the probes.</param>
+	/// <param name="traces">
+	/// The probes' recordings, in the spec's probe order: a preview run's, complete, or an export run's
+	/// (<see cref="ExportRun.Traces"/>), which hold each recording up to the frame being painted and no further, and
+	/// are read on the export's thread alone; a graph box shows the recording up to its frame either way.
+	/// </param>
+	IFrameDecorator Create(Project project, RunSpec spec, IReadOnlyList<ProbeTrace> traces);
 }
 
 /// <summary>One export's decorations (<see cref="IFrameDecorators"/>).</summary>

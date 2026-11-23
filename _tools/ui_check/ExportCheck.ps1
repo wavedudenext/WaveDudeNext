@@ -16,9 +16,10 @@
 # <https://www.gnu.org/licenses/>.
 
 # Drives the export (2026-10-14) on tiny.wdproj (64 x 48, 200 steps, a frame every 2 = 100 frames): File > Export >
-# Export field... with no run yet (a run is started first, then 100 PNGs land in <temp>\wd_export\tiny_field), the
+# Export field... with no run yet (the export computes its frames by a run of its own, which stores none and leaves
+# the preview without a run; 100 PNGs land in <temp>\wd_export\tiny_field), a preview run by F5, the
 # title's asterisk after an edit, and Export both... from the picture's context menu (the Apps key on a focused
-# handle) on the now stale run, which re-runs and writes both sequences; then tiny_probes.wdproj's field with the
+# handle) on the now stale run, which writes both sequences and is followed by the re-run; then tiny_probes.wdproj's field with the
 # probe graph boxes drawn in (a frame is kept as %TEMP%\export_probes.png), the same as an MP4 and as JPEGs, and its
 # probes' recordings as CSV from the graph box's and the tree's context menus (2026-10-18). The Save dialog cannot be driven by
 # posted keys, so the app takes the path from WAVEDUDE_EXPORT_PATH ("{name}" = the name it would suggest).
@@ -86,8 +87,9 @@ try {
 	$msg = (Find "StatusMessage").Current.Name
 	Check "the status bar reports it" ($msg -like "Exported 100 frames to *tiny_field*") $msg
 	Check "the files are tiny_field_0000.png to _0099.png and PNGs" ((Test-Path (Join-Path $field "tiny_field_0000.png")) -and (Test-Path (Join-Path $field "tiny_field_0099.png")) -and (IsPng (Join-Path $field "tiny_field_0050.png")))
-	Check "the run made for the export stays in the preview (100 frames)" ((Frame) -like "* / 99") (Frame)
-	Check "and is reported completed" ((RunStatus) -like "Completed*") (RunStatus)
+	# the export computed its frames by a run of its own, which stores none (2026-11-15, the user's design: until then a
+	# full-quality run was made first and stayed in the preview): the preview has no run, as before the export
+	Check "the export left the preview as it was: no run was made in it, the timeline has its 100 frames" ((Frame) -like "* / 99" -and (RunStatus) -eq "") ("'{0}', run status '{1}'" -f (Frame), (RunStatus))
 
 	# File > Export last (Ctrl+E, 2026-10-28): the last export again, to the same folder, without the question about a folder with files in it
 	$before = (Get-Item (Join-Path $field "tiny_field_0099.png")).LastWriteTimeUtc
@@ -98,13 +100,23 @@ try {
 	Check "Export last rewrites the 100 PNGs without asking about the folder" (WaitFor { (Pngs $field) -eq 100 -and (Get-Item (Join-Path $field "tiny_field_0099.png")).LastWriteTimeUtc -gt $before } 60000) ("{0} files, status '{1}'" -f (Pngs $field), (ExportStatus))
 	Check "and ends" (WaitFor { (ExportStatus) -eq "" } 10000) (ExportStatus)
 
+	# a preview run (F5), for the edit to stale: the exports made none
+	FocusOn "PreviewPlay"
+	Step "F5" 0x74 200
+	Check "F5 makes the preview's run" (WaitFor { (RunStatus) -like "Completed*" } 30000) (RunStatus)
+	# a run the user started is followed to its last frame; the still further down is of frame 0
+	FocusOn "PreviewTimeline"
+	Step "Home" 0x24 300
+	Check "Home puts the playhead back at frame 0" ((Frame) -like "0 / 99") (Frame)
+
 	# an edit: the title gets its asterisk and the run goes stale
 	FocusOn "Source:Source 1"
 	Step "Right" $VK_RIGHT 300
 	Check "an edit puts an asterisk after the file name" ($win.Current.Name -like "*tiny.wdproj*") $win.Current.Name
 	Check "and marks the run stale" ((RunStatus) -like "*edited since*") (RunStatus)
 
-	# Export both... from the picture's context menu, the Apps key on the focused handle: the stale run is redone first
+	# Export both... from the picture's context menu, the Apps key on the focused handle: the export computes its own
+	# frames whatever the preview's run is, and the stale run is redone after it
 	Remove-Item -Recurse -Force $field
 	$null = WaitFor { (RunStatus) -notlike "Running*" } 10000   # the automatic re-run after the edit, if it started, must not be mid-way
 	FocusOn "Source:Source 1"

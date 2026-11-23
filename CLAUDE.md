@@ -222,7 +222,8 @@ ScratchRunner: one kept engine; "frame k of the project as it is now" from step 
 FramePresenter: CopyLayer -> 8-bit: FrameRenderer.RenderIndexed at the store's size, WPF scales; 16-bit: ScreenRenderer at
    the picture's size on screen -> the WriteableBitmap, copied on the pool between Lock/Unlock on the UI thread; only
    the newest request is rendered
-ExportJob (own STA thread): CopyLayer -> FrameRenderer -> outline -> probe boxes/markers -> sinks (PNG, JPEG, MPEG-1, AVI, MP4, MOV)
+ExportJob (own STA thread): CopyLayer (the run's FrameStore, or an ExportRun stepping its own engine, nothing stored)
+   -> FrameRenderer -> outline -> probe boxes/markers -> sinks (PNG, JPEG, MPEG-1, AVI, MP4, MOV)
 FrameStore: native memory up to the budget, the rest in a temp file (%LOCALAPPDATA%\WaveDudeNext\cache, DeleteOnClose)
    or, in the browser head, in the storage the browser manages for the page (FrameCache.Storage, an IFrameStorage)
 ```
@@ -339,9 +340,10 @@ FrameStore: native memory up to the budget, the rest in a temp file (%LOCALAPPDA
   so CPU and GPU store the same bytes (2026-10-19) and both previews start from one value (2026-10-23, the user's choice:
   rounding I to a half first had merged the darkest indices at a high brightness, 2e-8 at 30 coming out 0 instead of 1).
   Every export needs the 16-bit samples (2026-10-23, the user's choice, so a picture has every level of the gradient):
-  an 8-bit run, a reduced resolution or skipped frames make the export run the simulation again at full quality first.
-  Only an OpenEXR export of I makes a run that stores I itself (squaring √I back would lose a bit); as coded, that run is
-  then the one the preview shows until the next edit or run (undecided whether it should be a side run).
+  an 8-bit run, a reduced resolution or skipped frames make the export compute its frames itself, by an export run
+  (since 2026-11-15, see Export; until then a full-quality preview run was made first and took the preview's run's
+  place). An OpenEXR export of I needs I itself (squaring √I back would lose a bit): its export run captures I, and the
+  preview's run is not touched, which settles what had been undecided here.
 - **First start** (2026-10-31, the user's design): with no settings file, the three quality settings and the dithering are
   chosen once from the machine (`PreviewDefaults.TierOf` on `MachineFacts.Read`; `library_check` proves the table): 32 GB
   or more → 16-bit samples dithered to 16 bits; else any of under 16 GB, a cache drive with a seek penalty (`StorageDevice`:
@@ -705,7 +707,37 @@ FrameStore: native memory up to the budget, the rest in a temp file (%LOCALAPPDA
   frame). The colour picker's drag and the brightness box went the same way. **He stopped the measuring there**
   ("maybe don't overthink these things toooo much"): a report of this kind is measured once before and once after.
 - **Export**: field, intensity or both, a still of the shown frame, from the current run when fresh and full,
-  else a run is made first. **The Save dialog starts where the session's last export of its kind went** (2026-10-28,
+  else by a run of the export's own. **Preview runs and export runs** (2026-11-15, the user's design, for all three
+  heads: "a split into preview runs and export runs, where the latter don't store the whole sequence in RAM"; "It
+  shouldn't just switch quality settings to something that the machine might not be able to provide"). A preview run
+  (`SimulationRun`, `RunHost.StartAsync`, which lost its full-quality parameters) is the View menu's quality and
+  stores its sequence for playing and scrubbing. Where its store does not hold what an export needs (stale, none,
+  reduced, 8-bit, the wrong intensity form), the export steps the simulation itself: `Runs/ExportRun`, an
+  `IFrameSource` that hands the export job each frame as it is asked for, in rising order, on the job's render thread,
+  and keeps the engine, one snapshot and the probes' recordings, no frame. `ExportJob` reads a store or an export run
+  alike (`Frames`); the decorations take the spec and the traces (`IFrameDecorators.Create(project, spec, traces)`),
+  an export run's traces standing at the frame being painted, which is all a graph box ever read
+  (`ProbeGraphData.At`). A probe's CSV with no serving run is an export run of every step and no frame, on the pool,
+  cancelled by Esc. So an export needs no memory for a sequence, asks no memory warning, and leaves the preview's
+  run, stale or not, as it was; the automatic re-run follows it as before. **Kept**: a fresh, complete, full-quality
+  16-bit preview run is read from its store, no step computed twice (mine; "always an export run" is one line).
+  **Proven**: `library_check` (24 checks, the CPU engine and the RTX 2080: an export run's 14 frames bit for bit a
+  stored run's, both planes; the recordings value for value at every frame and at the end; the AVI and the OpenEXR of
+  a job fed by one byte for byte those of a job fed by the store, the decoration's probe value with them; LIBRARY OK);
+  `ExportCheck`, whose first export now leaves the preview without a run and which makes its preview run by F5 and
+  goes Home before the still: the Avalonia head 44 of 45, the WPF head every check in one of two runs (the first
+  ended at the still, taken at frame 99 after my F5, the harness's fault; in the second the File menu took no keys
+  for Export last with the app in the foreground), the foreground guard failing in all three with the user at the
+  machine; the browser head in a headless Edge: the tiny project's field as AVI by an export run on the WebGPU
+  engine (100 frames in 0.7 s, the file the size it had from a stored run), and one frame of a Full HD project at
+  full resolution while the preview is at half (6.6 s in the interpreted Debug build, the engine's 1.8 s with it).
+  **Not done**: the export run steps, captures, renders and queues on one thread, where a preview run overlaps the
+  capture with the next steps (not measured against it). **The file side of it, for a head whose files are not
+  paths**: every sink opens its file through `Export/ExportFiles.Create`, which a head can answer with a file of its
+  own that takes bytes at a position (`ExportFiles.Opener`, `IExportFile`), so the browser head writes an export
+  into the picked file as it is made and no file lies in the page's memory (see Port, "An export is written into
+  the picked file as it is made").
+  **The Save dialog starts where the session's last export of its kind went** (2026-10-28,
   Jeroen's report, the user's rule: the first export after a project is opened starts in the project's folder under the
   project's name as before, every one after it in the last one's folder; a run's export proposes the last name with the
   layer suffix swapped, a still and probe data their own names; per kind and per project file, kept in the user settings
