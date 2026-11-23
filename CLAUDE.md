@@ -3193,6 +3193,66 @@ screen** (before and with the badges as one control): the Debug browser build 54
 read in 2.3 s where it was 3.2); the compiled one 3.2 s at a first opening and 2.75 s at a second, now 3.0 s and
 2.4 to 2.6 s; the desktop head 1.21 s and 0.85 s, now 1.06 s and 0.74 s. Less than the share measured on the
 desktop had promised for the compiled build (0.2 to 0.3 s where a sixth to a fifth of 2.2 s was reckoned).
+**The Debug build's interpreter runs with every optimisation off, and that is its debug level's doing**
+(2026-11-23, found while testing whether the interpreter's own compiler, the "jiterpreter", can be had back; the
+user's word: "We'll also do 5, or at least test it, to assess if it works or not"). What had been switched off on
+2026-11-13 was that compiler: where code is interpreted, the runtime counts how often a stretch is entered and
+turns the hot ones into small WebAssembly modules of their own, and with threads its script writes into each that
+the program's memory grows to 32768 pages at the most (`dotnet.runtime.js` of 10.0.15: `appendULeb(256)`,
+`appendULeb(32768)`), which a memory that may grow to 65536 pages is refused for. **The workaround works**:
+`Native/jiterpreter-memory.js`, a second `pre-js` script, stands in for `WebAssembly.Module` in every thread and
+gives a module that names the memory so a copy with the one byte corrected (`80 80 02` to `80 80 04`): 2305
+modules made in a session, every one through the correction, none refused, a run of 1.2 GB of frames (which
+reach past the 2 GB mark) completed and shown. **But in a Debug build the compiler had nothing to do with the
+slowness, and switching it on changes nothing there**: with it on, the runtime's own counters say "0 traces, 0
+rejected". A Debug build's boot configuration has `debugLevel` -1, and for any level but 0 the runtime starts its
+interpreter with all of its optimisations off, this compiler among them (`mono_wasm_load_runtime_common` in
+`src/mono/browser/runtime/runtime.c`, read at v10.0.0: "debug_level == 0 disables debugging and enables
+interpreter optimizations", `if (debug_level) { interp_opts = "-all,simd"; mono_wasm_enable_debugging
+(debug_level); }`). Measured, the manual's opening in the Debug build, the
+level set in `withOnConfigLoaded` for the test: at the level a Debug build has, read in 3.2 s and on screen after
+54 to 58 s; at level 0 with the compiler off 1.5 s and 15.6 s; at level 0 with the compiler on 1.7 s and 13.3 s, a
+second opening 11.5 s; "ready" 7.0 to 7.7 s instead of 9.1 to 9.7. With the badges as one control: 50.1 s at the
+Debug level, 11.6 s and 9.9 s at level 0. **What level 0 costs**: an error's stack trace names its methods but
+no file and line ("in C:\...\Program.cs:line 277" is gone; a crash asked for through `Program.Crash('ui')` at both
+levels), and no debugger can attach to the managed code in the browser (none is set up). **A Debug build now runs
+optimised and keeps its line numbers** (the same evening, on the user's question "why are the line numbers lost
+otherwise?"). They are lost at level 0 because the runtime hangs three things on that one number: its loader
+fetches the symbol files only for a level other than 0 (`dotnet.js`: `0!=e.debugLevel&&…isDebuggingSupported()`),
+and the same `if (debug_level)` that sets the interpreter's options to "-all,simd" calls
+`mono_wasm_enable_debugging`, which is what later makes the debugger's part call `mono_debug_init`, the one call
+that has the runtime read the symbols (`mono_wasm_debugger_init` in `mini-wasm-debugger.c`, read at v10.0.0: `if
+(!debugger_enabled) return; mono_debug_init (MONO_DEBUG_FORMAT_MONO);`, then sequence points in every method).
+Nothing ties a stack trace's lines to an unoptimised interpreter but that. `Native/debug-symbols.c` is linked in
+front of the two calls (`-Wl,--wrap=mono_wasm_enable_debugging -Wl,--wrap=mono_ee_interp_init`; `runtime.c` lies in
+the runtime pack as source and is compiled at the link, so its calls can be stood in for): the level stays what the
+build has, so the symbols are fetched; `mono_debug_init` is called in the first call's place and the level is not
+handed to the debugger's part; and the interpreter gets the options it would have had at level 0. `main.js` takes
+its `--no-jiterpreter-traces-enabled` back for a build whose level is not 0, so a Debug build has the compiler too
+(through `jiterpreter-memory.js`); a compiled build is as it was (the two calls are inside `#else` of `ENABLE_AOT`,
+and its level is 0). **Measured in the Debug build** (the badges as one control in all of these): the manual on
+screen after 50.1 s before; 15.1 s, a second opening 13.7 s, with the symbols kept and the interpreter optimised;
+13.5 s and 12.1 s with the compiler as well; "ready" after 7.5 to 8.4 s where it was 9.1 to 9.7; the default run
+3.8 s where it was 5.4 to 6.1; a crash's stack trace says "in C:\Work\WaveDudeNext\WaveDudeNext.Browser\Program.cs:line
+277" as before; a source added, the run made and its last frame, stored at about 2.2 GB, shown right. **Given up**:
+a debugger cannot attach to a Debug build's managed code (the two `--wrap` flags out of the project file bring that
+back, with the slow interpreter). **Seen**: the runtime prints "Failed to patch opcode at … into a monitor point" a
+few times a session in the threads' consoles with the compiler on (two threads meeting at one opcode, by the look of
+it; not followed). The option for the compiler's call thunks is gone from `main.js`, the runtime answering "Unable to
+set option 'no-jiterpreter-jit-call-enabled' as it's read-only" at every start. **Harness notes**: the
+program's threads are workers, and their consoles reach a debugging session of the page only after
+`Target.setAutoAttach` (flatten) and a `Runtime.enable` on each worker's session; the runtime's lines there begin
+"MONO_WASM:"; `INTERNAL.jiterpreter_get_options()` and `INTERNAL.jiterpreter_dump_stats(true, false)` on the
+runtime object say what the compiler is set to and what it has made (the latter prints only with
+`--jiterpreter-stats-enabled`); a pipeline cut by `Select-Object -First` left the probe's shell hanging with its
+host and browser alive (ended by hand): a probe's output is taken whole. **A run's time in a headless test depends
+on what else uses the graphics card** (reported to him that evening as "a run is slower in the compiled build than
+in the Debug build", and wrong): the default project's run (1250 frames of 960 × 540 in 8-bit on the WebGPU engine)
+took 8.3 s, 11.8 to 12.4 s and 17.0 s in three sessions of the compiled build, all of it waiting for the card's
+frames by the run's own timing line, against 5.4 to 6.1 s in the Debug build an hour before; with his own Start
+session's server ended (it was running at the time of the slow ones, his page presumably open and drawing), the
+same compiled build made the run in 2.4 to 2.9 s, 3.1 s with a source. A run's time is taken with nothing else on
+the card, and a figure that surprises is taken again before it is reported.
 **The harnesses against the Avalonia head** (the same night, on his word): ten of twelve passed outright
 (`PreviewCheck` 43, `LanguageCheck`, `ProbeGraphCheck` 39, `ImportCheck` 10, `ExportCheck` 45,
 `PreviewQualityCheck`, `SceneImageCheck` 9, `ColorPickerCheck` 13, `AboutCheck` 18, `SelectionCheck` 10).

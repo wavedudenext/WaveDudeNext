@@ -419,7 +419,11 @@ try {
 
 	const runtime = await dotnet.withConfig({
 		jsThreadBlockingMode: 'DangerousAllowBlockingWait',
-		runtimeOptions: ['--no-jiterpreter-traces-enabled', '--no-jiterpreter-jit-call-enabled'],
+		// The interpreter's own compiler (the "jiterpreter") is off in a compiled build, which has next to nothing
+		// interpreted (measured 2026-11-13: nothing lost); a Debug build takes this option back below. The compiler
+		// can run in this head's 4 GB of memory since Native/jiterpreter-memory.js (2026-11-23). The option for its
+		// call thunks, named here until then, cannot be set with threads and only printed that at every start.
+		runtimeOptions: ['--no-jiterpreter-traces-enabled'],
 	}).withResourceLoader((type, name, address, integrity) => {
 		// the runtime's own scripts are the browser's to load: a script is given by its address, not by its bytes
 		if (type === 'dotnetjs' || !document.getElementById('loading')) { return undefined; }
@@ -434,6 +438,11 @@ try {
 			return fetch(address, integrity ? { integrity } : undefined);
 		});
 	}).withOnConfigLoaded(config => {
+		// A Debug build (its debug level is not 0) is interpreted as a whole, and since Native/debug-symbols.c its
+		// interpreter runs optimised: there the interpreter's own compiler is worth having, so the option above
+		// that switches it off is taken back (2026-11-23: the manual in 13.5 s where it took 15.1 s without it, a
+		// run in 3.8 s where it took 5.5 s).
+		if (config.debugLevel !== 0) { config.runtimeOptions = []; }
 		const resources = config.resources;
 		if (resources && resources.coreAssembly && resources.assembly && resources.assembly.length > 0) {
 			resources.coreAssembly.push(...resources.assembly);

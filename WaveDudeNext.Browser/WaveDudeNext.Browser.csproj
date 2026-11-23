@@ -91,6 +91,11 @@
          under the code that made it. Native\finalizer-registration.c, which says more, is linked in front of the
          registration and pins the object for its length (2026-11-21) -->
     <EmccExtraLDFlags>$(EmccExtraLDFlags) -Wl,--wrap=sgen_object_register_for_finalization</EmccExtraLDFlags>
+    <!-- A Debug build's interpreter ran with every optimisation off, because the runtime ties that to the debug
+         level that also has it read the symbol files (the file and line of an error's stack trace).
+         Native\debug-symbols.c, which says more, keeps the symbols and the optimisations both (2026-11-23); a
+         compiled build does not come that way. -->
+    <EmccExtraLDFlags>$(EmccExtraLDFlags) -Wl,--wrap=mono_wasm_enable_debugging -Wl,--wrap=mono_ee_interp_init</EmccExtraLDFlags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -98,6 +103,7 @@
     <NativeFileReference Include="Native\framearena.c" />
     <NativeFileReference Include="Native\proxy-queue.c" />
     <NativeFileReference Include="Native\finalizer-registration.c" />
+    <NativeFileReference Include="Native\debug-symbols.c" />
   </ItemGroup>
 
   <!-- For a memory that may exceed 2 GB the C library's WebGL layer hands over a view of the bytes a texture upload
@@ -108,6 +114,14 @@
        the link's flags alone it was not. Not a file of the page: it is not copied anywhere. -->
   <ItemGroup>
     <Content Include="Native\webgl-large-memory.js" Kind="pre-js" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <!-- The interpreter's own compiler writes into each module it makes that the program's memory grows to 2 GB at the
+       most, and this head's may grow to 4 GB, so every such module was refused and the compiler had been switched off
+       (2026-11-13). Native\jiterpreter-memory.js, which says more, corrects the one byte as a module is made
+       (2026-11-23); linked in as the script above is. -->
+  <ItemGroup>
+    <Content Include="Native\jiterpreter-memory.js" Kind="pre-js" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
   <ItemGroup>
