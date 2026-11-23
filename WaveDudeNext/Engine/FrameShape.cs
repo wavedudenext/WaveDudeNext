@@ -15,7 +15,6 @@
 // version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 // <https://www.gnu.org/licenses/>.
 
-using System.Numerics.Tensors;
 using System.Runtime.InteropServices;
 using WaveDudeNext.Rendering;
 
@@ -131,7 +130,7 @@ public static class FrameConversion
 		if (divisor == 1 && shape.Format == FrameFormat.Half && !root)
 		{
 			Parallel.For(0, height, y =>
-				TensorPrimitives.ConvertToHalf(source.AsSpan(offset + y * stride, width), MemoryMarshal.Cast<byte, Half>(destination.Span.Slice(y * width * 2, width * 2))));
+				RowMath.ToHalves(source.AsSpan(offset + y * stride, width), MemoryMarshal.Cast<byte, Half>(destination.Span.Slice(y * width * 2, width * 2))));
 			return;
 		}
 		int canvasWidth = shape.CanvasWidth;
@@ -150,9 +149,9 @@ public static class FrameConversion
 			{
 				if (root)
 				{
-					TensorPrimitives.Sqrt(row, row);
+					RowMath.Roots(row);
 				}
-				TensorPrimitives.ConvertToHalf(row, MemoryMarshal.Cast<byte, Half>(destination.Span.Slice(y * width * 2, width * 2)));
+				RowMath.ToHalves(row, MemoryMarshal.Cast<byte, Half>(destination.Span.Slice(y * width * 2, width * 2)));
 			}
 			else
 			{

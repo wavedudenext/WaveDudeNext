@@ -16,8 +16,8 @@
 // <https://www.gnu.org/licenses/>.
 
 using System.Collections.Concurrent;
-using System.Numerics.Tensors;
 using System.Runtime.InteropServices;
+using WaveDudeNext.Engine;
 
 namespace WaveDudeNext.Rendering;
 
@@ -177,10 +177,10 @@ public sealed class ScreenRenderer
 		{
 			for (int y = block.Item1; y < block.Item2; y++)
 			{
-				TensorPrimitives.ConvertToSingle(values.Span.Slice(y * sourceWidth, sourceWidth), line);
+				RowMath.ToSingles(values.Span.Slice(y * sourceWidth, sourceWidth), line);
 				if (energy)
 				{
-					TensorPrimitives.Multiply(line, line, line);
+					RowMath.Square(line);
 				}
 				Span<float> target = rows.AsSpan(y * targetWidth, targetWidth);
 				for (int t = 0; t < targetWidth; t++)
@@ -206,16 +206,16 @@ public sealed class ScreenRenderer
 			for (int y = block.Item1; y < block.Item2; y++)
 			{
 				ReadOnlySpan<float> weights = _y.WeightsOf(y, out int first);
-				TensorPrimitives.Multiply(rows.AsSpan(first * targetWidth, targetWidth), weights[0], buffers.Values);
+				RowMath.Scale(rows.AsSpan(first * targetWidth, targetWidth), weights[0], buffers.Values);
 				for (int k = 1; k < weights.Length; k++)
 				{
-					TensorPrimitives.MultiplyAdd(rows.AsSpan((first + k) * targetWidth, targetWidth), weights[k], buffers.Values, buffers.Values);
+					RowMath.AddScaled(rows.AsSpan((first + k) * targetWidth, targetWidth), weights[k], buffers.Values);
 				}
 				if (energy)
 				{
-					TensorPrimitives.Sqrt(buffers.Values, buffers.Values);
+					RowMath.Roots(buffers.Values);
 				}
-				TensorPrimitives.ConvertToHalf(buffers.Values, buffers.Halves);
+				RowMath.ToHalves(buffers.Values, buffers.Halves);
 				ReadOnlySpan<ushort> bits = MemoryMarshal.Cast<Half, ushort>(buffers.Halves);
 				Span<int> target = pixels.Span.Slice(y * targetWidth, targetWidth);
 				if (table != null)

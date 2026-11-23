@@ -2713,7 +2713,113 @@ internal static class Program
 		Check(Rgb.FromArgb(lifted.Argb[0]).G == 127 && ((lifted.HalfTable(SampleKind.IntensityRoot, 1f)[0] >> 8) & 0xFF) == 128,
 			"black level 0.5 lifts a 0 channel to 127 in the palette (truncated, as in Python) and to 128 in the half table (rounded)");
 		CheckScreenRenderer(inferno);
+		CheckRowMath();
 	}
+
+	/// <summary>
+	/// The row operations' own loops, which serve in a browser (2026-11-21, <see cref="RowMath"/>): each against
+	/// System.Numerics.Tensors' result, bit for bit. Every half; floats by a stride over all their bit patterns, with
+	/// the patterns around every change of exponent; lengths that leave a remainder beside the lanes.
+	/// </summary>
+	private static void CheckRowMath()
+	{
+		Console.WriteLine("--- row operations (the browser's own loops)");
+		var halves = new Half[65536];
+		for (int i = 0; i < halves.Length; i++)
+		{
+			halves[i] = BitConverter.UInt16BitsToHalf((ushort)i);
+		}
+		var own = new float[65536];
+		var theirs = new float[65536];
+		RowMath.SinglesInLanes(halves, own);
+		TensorPrimitives.ConvertToSingle(halves, theirs);
+		Check(SameBits(own, theirs), "halves to floats: each of the 65,536 halves as the framework converts it");
+
+		// one float pattern in 257, so every exponent, both signs, NaN payloads and the infinities come by, and the
+		// 64 patterns about each exponent's first, where the rounding turns over
+		var patterns = new List<float>(17_000_000);
+		for (ulong bits = 0; bits <= uint.MaxValue; bits += 257)
+		{
+			patterns.Add(BitConverter.UInt32BitsToSingle((uint)bits));
+		}
+		for (uint exponent = 0; exponent < 512; exponent++)
+		{
+			for (int near = -32; near < 32; near++)
+			{
+				patterns.Add(BitConverter.UInt32BitsToSingle(unchecked((exponent << 23) + (uint)near)));
+			}
+		}
+		float[] floats = [.. patterns];
+		var ownHalves = new Half[floats.Length];
+		var theirHalves = new Half[floats.Length];
+		RowMath.HalvesInLanes(floats, ownHalves);
+		TensorPrimitives.ConvertToHalf(floats, theirHalves);
+		Check(SameBits(ownHalves, theirHalves),
+			$"floats to halves: {floats.Length} float patterns (every 257th, and those about each exponent) as the framework converts them, NaN payloads included");
+
+		var random = new Random(21);
+		bool same = true;
+		foreach (int length in new[] { 1, 3, 4, 5, 31, 914, 1920 })
+		{
+			var values = new float[length];
+			var other = new float[length];
+			for (int i = 0; i < length; i++)
+			{
+				values[i] = (float)(random.NextDouble() * (i % 7 == 0 ? 1e-6 : 3.0));
+				other[i] = (float)(random.NextDouble() * 2 - 1);
+			}
+			float factor = (float)(random.NextDouble() * 0.9 + 0.05);
+
+			float[] a = (float[])values.Clone(), b = (float[])values.Clone();
+			RowMath.RootsInLanes(a);
+			TensorPrimitives.Sqrt(b, b);
+			same &= SameBits(a, b);
+
+			a = (float[])other.Clone();
+			b = (float[])other.Clone();
+			RowMath.SquareInLanes(a);
+			TensorPrimitives.Multiply(b, b, b);
+			same &= SameBits(a, b);
+
+			a = new float[length];
+			b = new float[length];
+			RowMath.ScaleInLanes(other, factor, a);
+			TensorPrimitives.Multiply(other, factor, b);
+			same &= SameBits(a, b);
+
+			a = (float[])values.Clone();
+			b = (float[])values.Clone();
+			RowMath.AddScaledInLanes(other, factor, a);
+			TensorPrimitives.MultiplyAdd(other, factor, b, b);
+			same &= SameBits(a, b);
+
+			var shortHalves = new Half[length];
+			var shortTheirs = new Half[length];
+			RowMath.HalvesInLanes(other, shortHalves);
+			TensorPrimitives.ConvertToHalf(other, shortTheirs);
+			same &= SameBits(shortHalves, shortTheirs);
+			a = new float[length];
+			b = new float[length];
+			RowMath.SinglesInLanes(shortHalves, a);
+			TensorPrimitives.ConvertToSingle(shortHalves, b);
+			same &= SameBits(a, b);
+		}
+		Check(same, "roots, squares, a scaled row, a scaled row added and both conversions, at seven lengths from 1 to 1920: bit for bit the framework's");
+		bool refused = false;
+		try
+		{
+			RowMath.HalvesInLanes(new float[5], new Half[4]);
+		}
+		catch (ArgumentException)
+		{
+			refused = true;
+		}
+		Check(refused, "a destination shorter than its source is refused");
+	}
+
+	/// <summary>Whether two arrays hold the same bytes.</summary>
+	private static bool SameBits<T>(T[] one, T[] other) where T : unmanaged =>
+		MemoryMarshal.AsBytes(one.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(other.AsSpan()));
 
 	/// <summary>The preview's 16-bit path (2026-10-23): resampling in value space to the screen's size, the 16-bit colours, the Bayer dither.</summary>
 	private static void CheckScreenRenderer(ColorLut lut)

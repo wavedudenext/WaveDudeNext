@@ -1037,7 +1037,7 @@ machine has), no Direct3D display path.
 
 ## Harnesses
 
-`library_check` (100+ checks: engines, store, renderer, half tables, screen path, schemes, probes, scratch, reduced preview, importer, export, parts, group move, the smoothed square's envelope, open edges, work groups on a prime grid, ranges, XOR gate, zone plate, gate port follower, history, clipboard, the project file's DTD, the first start's tiers, the engine's page-locked snapshots, scene replacement, the memory warning's store bytes, the painter's runs and the glowing edges' lanes byte for byte against pixel by pixel, the diffuser, the interference filter, the simple and the facetted grating, the Fresnel lens, the meta surfaces' fills, the detectors' statistics and a colour scheme's stops added at a position and moved past their neighbours).
+`library_check` (100+ checks: engines, store, renderer, half tables, screen path, schemes, probes, scratch, reduced preview, importer, export, parts, group move, the smoothed square's envelope, open edges, work groups on a prime grid, ranges, XOR gate, zone plate, gate port follower, history, clipboard, the project file's DTD, the first start's tiers, the engine's page-locked snapshots, scene replacement, the memory warning's store bytes, the painter's runs and the glowing edges' lanes byte for byte against pixel by pixel, the diffuser, the interference filter, the simple and the facetted grating, the Fresnel lens, the meta surfaces' fills, the detectors' statistics, a colour scheme's stops added at a position and moved past their neighbours, the H.264 stream splitter, the MP4 container and ffmpeg as the encoder, a head's own H.264 encoder in their place, every format's files written through a head's own files byte for byte those written to the disk, and the row operations' own loops, which serve in a browser, bit for bit the framework's).
 UI, all on `Common.ps1`, with their check counts: `PreviewCheck` 43, `RunCheck` 71, `LanguageCheck` 11,
 `ProbeGraphCheck` 39, `ImportCheck` 10, `ExportCheck` 44, `PreviewQualityCheck` 35, `SceneImageCheck` 8,
 `ColorPickerCheck` 13, `KeyboardCheck` 13, `AboutCheck` 18, `SelectionCheck` 10. Test projects `tiny*.wdproj` sit beside them. The
@@ -2613,6 +2613,51 @@ the WebGPU engine; a second visit one load, 3.6 s; the frame cache's worker answ
 capture. Not seen there: a run, another browser. The build was of the working tree, 120 paths ahead of the pushed
 history. **Still to do for the site, each the user's word**: a workflow in place of the hand copy; a visible link
 to the source and the license, About doing nothing in this head.
+**Where the browser's compiled build loses against native, measured** (2026-11-21, the user's question whether the
+ahead-of-time compiling the browser needs has the faults ReadyToRun had on the desktop, and his word to test each
+workaround; a bench app under `%TEMP%` on the repository's library, native beside the browser's build, the tables
+kept nowhere but here). It is another compiler (Mono's, through LLVM at `-O2`, the whole program, SIMD on) and
+ReadyToRun's fault is not there: **the library runs at 1.6 to 3.5 times native** (CPU engine step 1.6 and 1.7,
+painter 1.9 to 2.2, renderer 2.3 to 2.6, glowing edges 3.5, at Full HD on ten threads). **The one cliff is
+`System.Numerics.Tensors`**: `TensorPrimitives.Sqrt` over a plane row by row on the pool takes 34.6 ms there
+against 0.14 ms native (247 times), `ConvertToHalf` 5.9 against 0.34 (17 times), and the library's nine calls of
+it are its two slow paths, the capture's conversion in `FrameShape.cs` (both planes as halves 37 ms against 2.5,
+15 times) and the 16-bit screen path in `ScreenRenderer.cs` (20 ms against 1.4, 14.5 times). A plain
+`Vector<float>` loop does the roots in 0.61 ms there (2.6 times native), and four lanes of integer operations
+(Fabian Giesen's float_to_half_fast3_rtne, bit for bit the cast's values over a plane of 2,073,600) the halves in
+2.2 ms. Natively `TensorPrimitives.Sqrt` is the faster one (0.14 against 0.23 ms; it has eight lanes on this
+Xeon), the own halves are faster (0.25 against 0.34). The browser's default (8-bit samples, the WebGPU engine)
+touches neither path; a 16-bit preview and the CPU engine do. **What else was tested and is small or nothing**: a
+loop in a method with an exception clause (`using`, `lock`, `try`: the compiler builds such a method without its
+own inlining, `cfg->disable_inline` in the runtime's `mini.c`) costs 8 to 13 %, and the loop split off into a
+method of its own gets it back; the library has 76 methods with a clause and a loop, nearly all orchestration,
+`PngEncoder.Deflate`'s filter loop the one per-byte case; the threaded runtime's polls and its writing of every
+reference to the stack cost nothing measurable (plain loops, object fields, small calls and `Vector<float>` lanes
+run at native speed); of 91,312 methods compiled for the bench, 44 are left to the interpreter
+(`-p:WasmAOTCompilerVerbose=true` and a detailed build log name them: "interp only method"), in the library
+`SimulationRun.RunLoop` and the export job's render lambda, each for a catch inside a finally block, and the run
+loop measured on a 96 × 64 grid is no outlier (its own share 2.7 times native); `-O3`
+(`WasmBitcodeCompileOptimizationFlag`) gains nothing, two paths 10 to 20 % worse. **The nine calls are the
+library's own loops in a browser now** (the same evening, on his word): `Engine/RowMath.cs`, internal, six row
+operations (floats to halves and back, roots, squares, a scaled row, a scaled row added), each
+`TensorPrimitives`' everywhere but in a browser (`OperatingSystem.IsBrowser()`, so the desktop's values and times
+are what they were: capture 2.3 ms, screen path 1.5 ms) and a loop in lanes there. The values are the same bit
+for bit: floats to halves compared with the framework's over all 4,294,967,296 float patterns (a NaN's payload
+is carried over as the framework carries it: 16.7 million patterns had differed before that), halves to floats
+over all 65,536 (the steps of `Half`'s own conversion, lane by lane); `library_check` compares all six with the
+framework's at each run (LIBRARY OK, 875). **In the browser's build: the capture of both planes 37.4 → 5.5 ms,
+the screen path 20.2 → 4.1 ms** (2.4 and 2.8 times native), the loops' values there the casts' (0 unlike). Seen
+in the rebuilt head: Example 16 with 16-bit samples at half resolution, both pictures right, the presenter at 7 to
+8 ms a frame while the run was followed. Left
+as it was that day: the two conversions' lanes ran at 8 ns a value on one thread there, a fifth of what four lanes
+should give (the `Vector128` shifts, found and mended the next day, see "The round of ten" below).
+**The conversion loops**: one operation at a time in a bench (a browser app under `%TEMP%` on the repository's
+library, compiled ahead of time, without threads): every lane operation of the two loops is the processor's own
+(0.2 to 0.4 ns a value) but the three `Vector128` shifts, which are not (4.2 ns for a line of three), and
+`PackedSimd`'s are. `RowMath` asks for them by name where they exist (`PackedSimd.IsSupported`, settled at compile
+time; the general ones elsewhere): floats to halves 7.9 → 1.4 ns a value on one thread, halves to floats 3.2 → 0.7,
+the values the casts'. Also slow there and not ours to use any more: `Vector.ConvertToInt32` (5.8 ns against 0.4
+for `PackedSimd.ConvertToInt32Saturate`); `Vector.ShiftRightLogical` takes twice the operator `>>>`.
 
 ## People, name, license
 
