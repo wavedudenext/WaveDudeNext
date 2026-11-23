@@ -80,12 +80,19 @@
          null. Naming the base, at emscripten's own default, keeps the data first and the stack behind it, as an
          optimised link has them; it changes nothing in Release. -->
     <EmccExtraLDFlags>$(EmccExtraLDFlags) -s GLOBAL_BASE=1024</EmccExtraLDFlags>
+    <!-- The runtime that stopped now and then in long runs (an assertion in the collector, a few runs in a hundred):
+         the threaded runtime registers a new object with a finaliser while nothing the collector can see holds it,
+         and that registration can wait for the collector's lock, so another thread's collection frees the object
+         under the code that made it. Native\finalizer-registration.c, which says more, is linked in front of the
+         registration and pins the object for its length (2026-11-21) -->
+    <EmccExtraLDFlags>$(EmccExtraLDFlags) -Wl,--wrap=sgen_object_register_for_finalization</EmccExtraLDFlags>
   </PropertyGroup>
 
   <ItemGroup>
     <NativeFileReference Include="Native\thread-id.c" />
     <NativeFileReference Include="Native\framearena.c" />
     <NativeFileReference Include="Native\proxy-queue.c" />
+    <NativeFileReference Include="Native\finalizer-registration.c" />
   </ItemGroup>
 
   <!-- For a memory that may exceed 2 GB the C library's WebGL layer hands over a view of the bytes a texture upload

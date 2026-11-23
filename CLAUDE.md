@@ -2468,7 +2468,7 @@ gives memory back (`MORECORE_CANNOT_TRIM`; `framearena.c`'s note said otherwise 
 memory reach the break before it answers, a request for nothing included, so with the break at the ceiling the first
 allocation the heap cannot serve grows the memory to its 4 GB at once: a memory at its ceiling does not say the frames
 filled it. `emscripten_resize_heap` refuses a memory that is as long already, so `wavedude_commit` looks at the size
-again after a refusal. **Open: the runtime stops now and then in long runs** (Example 7 at full resolution, 5000 frames,
+again after a refusal. **Open, and its cause found on 2026-11-21 ("The runtime that stopped in long runs", below): the runtime stops now and then in long runs** (Example 7 at full resolution, 5000 frames,
 40 s), on a dead object: `sgen-marksweep.c:328` on a run's thread 0.1 s after the run's start (twice timed),
 `class-accessors.c:90` on the UI thread in Avalonia's text shaping for the timeline 15 s into a run (once, the one stack
 kept). 6 of 17 full-length runs without a click in the Simulation menu, 0 of 15 with the RAM cache set there to 10, 20 or
@@ -2796,6 +2796,51 @@ the rest, and both sightings were Debug builds. `main.js` makes the rest core, t
 loader's own hook (`withOnConfigLoaded`, which runs before the lists are read, `loader/config.ts` and `run.ts`).
 Proven on a Debug build: the hook leaves 197 assemblies as core and none in the rest, and 24 loads cut short by a
 second load all started.
+**The runtime that stopped in long runs** (the user's order after the above: "well, I want it"; the cause found the
+same day, 2026-11-21, after hours he rightly lost patience with). The stops (`class-accessors.c:90`,
+`sgen-marksweep.c:328`, `sgen-scan-object.h:93`, a memory access out of bounds in the allocator) all mean a
+reference to memory the collector has taken back: `class-accessors.c:90` is the collector's own filler met as an
+object's class. **A fault of the runtime, with threads on WebAssembly alone, read at v10.0.15**: an object of a class
+with a finaliser is registered for finalisation as it is allocated (`object_new_common_tail` in `object.c`), by
+`sgen_object_register_for_finalization` (`sgen-fin-weak-hash.c`), which notes it in a table of 1024 entries and,
+when that is full, takes the collector's lock to empty it (`LOCK_GC`), or sleeps 200 µs at a time while another
+thread empties it (`mono_thread_info_usleep`). Both waits count the thread as stopped, so another thread's
+collection runs meanwhile (the function's own comment: "a GC was triggered, which then drained the stage entries"),
+and the new object is held by the C functions' variables alone, which on WebAssembly are locals no collector can
+read: the object is taken for dead and its memory given out again or filled. The runtime guards the sibling place,
+where a finaliser is run, against exactly this ("we explicitly pin the object via a gchandle so we don't rely on the
+ref being present on stack/regs which is not scannable on WASM", `sgen_gc_invoke_finalizers`), not this one. Every
+SkiaSharp and HarfBuzzSharp object has a finaliser, and every weak reference SkiaSharp keeps for one, which is why
+the stops sat in Avalonia's text drawing (a font or text blob builder just made, `GlyphRunImpl.GetTextBlob`) and
+text shaping. **The remedy**: `Native/finalizer-registration.c`, linked in front of that function
+(`-Wl,--wrap=sgen_object_register_for_finalization`, as `thread-id.c` and `proxy-queue.c` are; the runtime's
+`sgen-mono.c.o` references the function across files, seen with `llvm-nm`), pins the object by a handle
+(`sgen_gchandle_new`, `sgen_gchandle_free`, the runtime's own remedy) for the length of the registration. A fault
+worth reporting upstream (his to write). **Evidence**: a stress in a scratch copy of the tree, plain objects with a
+finaliser made on three threads beside three that allocate, no Skia: the app's own assertion
+(`class-accessors.c:90`) 0.6 s after its start without the remedy; with it, none in the 30 s the same stress ran,
+which then ended on a stop of its own (below), so that stress is no proof of absence. **The proof is the app's own
+long runs on the repository's build with the remedy: 60 completed, none stopped** (two browsers side by side, a
+browser started for each run; ten further attempts are not counted, the test browser not having come up). **The
+tallies before the remedy** (Example 7 lengthened to 10,000 steps at full resolution, 8-bit, a browser started for
+each run): about one run in twenty stopped, 5 of some 110 in the series that chose the resolution in the View menu,
+none of 45 in those that did not, which was chance, not a cause. **What the hunt went through, each ruled out**:
+the loggers that walk the stack, an older runtime pack, threads ending, the collector's canaries
+(`MONO_GC_DEBUG=nursery-canaries`: no report at a stop), its record of references from old objects to young ones
+(`check-remset-consistency`: none missing), the interpreter's precise stack marking
+(`MONO_INTERPRETER_OPTIONS=-precise`), a wait on a newly made event (the first idea, never tested). Under
+`verify-before-collections` the whole heap was sound at a collection's start and a filler was copied in that
+collection all the same: a stale reference in a place no check walks, which is what a C function's variable is.
+**What reading a stop taught**: the managed frames in the runtime's thread dump are not interpreter frames but
+compiled methods that have exception clauses (they keep an `il_state` for the interpreter to take over at a
+handler), so a method without a clause is missing from the dump and the offset shown is that of the try block or
+handler the frame was in; the build's symbol map (`-p:WasmEmitSymbolMap=true`) names the wasm functions of the
+stack. **Seen in the stress and not followed**: started with the threads that allocate already running, it stalls
+at its own start, one thread never stopping for the first collection (`mono-threads.c:336`, "suspend took" longer
+than the 200 ms the runtime allows; `MONO_SLEEP_ABORT_LIMIT` raises the limit, and at 30 s it still fired), with
+and without the remedy; the app has never shown that stop in some 300 runs. **The scratch copies of the tree are
+gone and no build is made outside the repository again** (see Build and run; the hunt had three, each a build of
+ten to fourteen minutes, which is where its hours went).
 **Where the browser's compiled build loses against native, measured** (2026-11-21, the user's question whether the
 ahead-of-time compiling the browser needs has the faults ReadyToRun had on the desktop, and his word to test each
 workaround; a bench app under `%TEMP%` on the repository's library, native beside the browser's build, the tables
