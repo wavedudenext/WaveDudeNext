@@ -92,6 +92,7 @@ internal static partial class Program
 			long asked = Stopwatch.GetTimestamp();
 			Task<LocalStorageSettings> settings = LocalStorageSettings.CreateAsync();
 			Task<SystemFont?> systemFont = SystemFont.CreateAsync();
+			Task<PageDrops> drops = PageDrops.CreateAsync();
 			// the user settings are kept in the browser's local storage (2026-11-14, the user's choice), where the desktop
 			// heads have a file; before anything asks for a setting, since the settings are read at their first use
 			try
@@ -110,11 +111,23 @@ internal static partial class Program
 			// where the permission was given on an earlier visit the page has read the faces by now
 			_systemFont = await systemFont;
 			App.App.SystemFont = _systemFont;
+			// a drop from outside the page is read by the page's own script, since the framework's reaches the program
+			// without its data here (page-drop.js says why)
+			try
+			{
+				App.App.PageDrops = await drops;
+			}
+			catch (Exception ex)
+			{
+				App.App.Logger.Warn(ex, "The script that reads a drop could not be loaded: files and text dropped on the page are not taken");
+			}
 			App.App.Logger.Debug("The page's scripts had answered {Elapsed:0} ms after they were asked", Stopwatch.GetElapsedTime(asked).TotalMilliseconds);
 		}
 		// the browser's GPU engine stands in for the OpenCL one, which a browser does not have; where the browser has
 		// no WebGPU either, the factory says why and gives the CPU engine
 		WaveEngineFactory.PlatformGpu = WebGpuWaveSimulator.TryCreate;
+		// and the About box names that engine's device where a desktop's names OpenCL's
+		App.App.PlatformGpuDevice = () => WebGpuWaveSimulator.Adapter;
 		try
 		{
 			// the loading mark: the application is being set up; and, from the builder's AfterSetup, its view is made

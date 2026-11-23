@@ -1402,7 +1402,10 @@ public partial class ProjectTree : UserControl
 				{
 					return data.TryGetValue(ObjectsFormat);
 				}
-				return data.TryGetText() is { } text && text.TrimStart().StartsWith('<') ? text : null;
+				// a head to which a drop from outside comes without its data read the drop itself (the browser head,
+				// App.PageDrops): its text, which is there from the drop on, so such a drag shows no mark on its way
+				string? text = data.Formats.Count == 0 && App.PageDrops is { } page ? page.Text() : data.TryGetText();
+				return text != null && text.TrimStart().StartsWith('<') ? text : null;
 			}
 			catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or IOException)
 			{

@@ -30,6 +30,7 @@ using NLog.Config;
 using NLog.Targets;
 using WaveDudeNext.App.Localization;
 using WaveDudeNext.App.Logging;
+using WaveDudeNext.App.Platform;
 using WaveDudeNext.App.Theming;
 using WaveDudeNext.Rendering;
 using WaveDudeNext.Runs;
@@ -86,6 +87,21 @@ public partial class App : Application
 	/// page's loading mark away then (2026-11-20). Called once, on a thread of the pool; null where nobody asks.
 	/// </summary>
 	public static Action? Shown { get; set; }
+
+	/// <summary>
+	/// The drops from outside as the head itself reads them, where the framework hands them over without their data
+	/// (<see cref="IPageDrops"/>: the browser head); null elsewhere, where a drop carries its data. Set once, by the
+	/// head, before the application starts.
+	/// </summary>
+	public static IPageDrops? PageDrops { get; set; }
+
+	/// <summary>
+	/// The graphics device of a head whose GPU engine is not the OpenCL one, for the About box's system facts: its
+	/// name, empty while no engine has been made yet or where the head found none. The browser head's, whose engine
+	/// is WebGPU's (2026-11-20: its About box had named OpenCL, which a browser does not have, as "not installed", and
+	/// ffmpeg with it). Null on a desktop. Set once, by the head, before the application starts; any thread.
+	/// </summary>
+	public static Func<string>? PlatformGpuDevice { get; set; }
 
 	/// <summary>An unhandled error in a line for the user: its kind and its message.</summary>
 	private static string WordsOf(Exception? error) => error == null ? "An error without a description." : error.GetType().Name + ": " + error.Message;

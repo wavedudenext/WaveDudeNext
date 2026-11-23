@@ -56,6 +56,11 @@
          reach by reflection in the framework is what the published head is seen to run with: the settings, the
          project files and the examples load there. -->
     <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+    <!-- The framework's own error messages stay in the program (2026-11-20): a browser build leaves them out by
+         default and an error then reads as the message's name and its arguments ("XmlSerializeErrorDetails, 1, 1" in
+         the error box of a project file that could not be read, seen 2026-11-15), which tells the user nothing, and
+         the errors of files are what this application shows. -->
+    <UseSystemResourceKeys>false</UseSystemResourceKeys>
     <!-- the App project is an executable that is not self-contained, a browser app always is: the SDK's check of the
          pair is for two programs started side by side, which these are not -->
     <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>

@@ -105,7 +105,9 @@ public static class AboutInfo
 	/// The system facts as "label: value" lines, the labels looked up through <paramref name="label"/> (a string table
 	/// key to its text). <paramref name="gpuSetting"/> is the application's GPU switch. The OpenCL devices are enumerated
 	/// here; a missing OpenCL is reported as a line, never thrown. The eight lines: program, runtime, operating system,
-	/// processor, memory, the GPU setting, the OpenCL devices, the H.264 encoders.
+	/// processor, memory, the GPU setting, the OpenCL devices, the H.264 encoders. In a head with a GPU engine of its
+	/// own (<see cref="App.PlatformGpuDevice"/>) the last three are that engine's setting, its device and the head's
+	/// own H.264 encoder (<see cref="ExportFormats.PlatformH264"/>).
 	/// </summary>
 	public static string SystemReport(bool gpuSetting, Func<string, string> label)
 	{
@@ -116,6 +118,15 @@ public static class AboutInfo
 		Line("AboutOperatingSystem", $"{RuntimeInformation.OSDescription}, {RuntimeInformation.OSArchitecture}");
 		Line("AboutProcessor", $"{Environment.ProcessorCount} {label("AboutCores")}");
 		Line("AboutMemory", $"{FrameMemory.Gigabytes(FrameMemory.AvailableBytes())} {label("AboutMemoryFree")} {FrameMemory.Gigabytes(FrameMemory.PhysicalBytes())}");
+		if (App.PlatformGpuDevice is { } device)
+		{
+			// a head with a GPU engine of its own (the browser head, WebGPU): its switch and its device where a desktop
+			// names OpenCL's, and for H.264 the head's own encoder (the browser's), or that there is none
+			Line("AboutGpuSettingWebGpu", label(gpuSetting ? "AboutOn" : "AboutOff"));
+			string name = device();
+			Line("AboutWebGpuDevice", name.Length > 0 ? name : label("AboutNone"));
+			return sb.ToString().TrimEnd();
+		}
 		Line("AboutGpuSetting", label(gpuSetting ? "AboutOn" : "AboutOff"));
 		Line("AboutOpenClDevices", Devices(label));
 		Line("AboutH264Encoders", Encoders(label));

@@ -2771,6 +2771,32 @@ viewport override ends with the session; **the SDK's host reads its list of file
 rebuild it answers "download … failed" for the new fingerprints until it is started again, which is what a rebuild
 under his Start session does to his page. And `sed -i` in Git Bash wrote the markup file with other line ends
 (put back byte for byte): files are edited with the Edit tool.
+**The browser head's open faults** (2026-11-20/21, the user's word: "fix the fucking open faults"; an hour and a half,
+at which he asked what was taking so long: a status after each fault, unasked, is owed on a round like this).
+**Keys**: while the application has the keyboard, the browser's own answer to a key is held back as the key
+arrives, by a capturing `keydown` listener in `main.js` (Avalonia's script holds it back only when .NET has answered,
+`OnKeyDown(…).then(… preventDefault())` in its `input.ts` at 12.1.5, which on the threaded runtime is too late: Tab
+moved the browser's focus off the application's element and no key arrived any more, F1 opened the browser's help
+too, F5 loaded the page again, F6, F7 and F10 went to the browser's toolbar, Ctrl+S saved the page). Left to the
+browser: a character typed (no Ctrl, Alt or command key; AltGr's; dead keys and input methods), F11, F12, the zoom
+keys Ctrl with plus, minus and 0, Ctrl+R and Ctrl+F5, and Ctrl+V where the browser has no clipboard API to read
+with (written, not run). The application's element takes the focus when the loading mark goes, so a key before
+the first click is the application's. Seen in the page by a listener at the event's end: Tab, Shift+Tab, F1, F10,
+Escape, F5, Ctrl+Z, Ctrl+Shift+I held; F11, Ctrl+=, Ctrl+0 and "a" the browser's; F5 alone ran the default project
+to "Run Completed" with the page not loaded again; "a", "b", Backspace, "c" and AltGr's "@" typed into the
+Description box read "ac@". **Drops**: `wwwroot/page-drop.js` takes a drop's text and files in the window's
+capturing phase, while the browser still has them, and `IPageDrops` (`App.PageDrops`, the browser head's
+`PageDrops`) hands them to the three drop targets when Avalonia's drop arrives with no format: the view opens the
+first file from its contents (`OpenContentsAsync`, the picked files' way), the pictures and the tree take the text
+as dragged objects. A drag from outside shows no mark on its way (a browser gives a page the data at the drop
+alone). Seen: `tiny_probes.wdproj` dropped and opened, a source's XML dropped on the field picture and placed at
+the drop's pixel (the debugging port's `Input.dispatchDragEvent` with `files` or a `text/plain` item). **A file
+dialog the browser refuses no longer ends the program**: found on the way, when Export intensity reached the
+program after the manual had taken eight seconds to lay out: "Must be handling a user gesture to show a file
+picker", unhandled, the page's notice. Every picker goes through `PickedFiles.OpenAsync`, `SaveAsync` and
+`FolderAsync` now, which log the refusal as a warning and answer as a dialog closed without a choice. **About**
+names the WebGPU setting and device there (`App.PlatformGpuDevice`, two strings in the four tables) and no H.264
+line; **the framework's error messages** are kept (`UseSystemResourceKeys` false; not seen in a page).
 **The start that never came**: the main thread waited for a lock of its own. emscripten 3.1.56's queue of calls
 between threads (`proxying.c`, in the SDK's pack) holds its lock while `do_proxy` makes a target thread's task
 queue, which allocates; on the main thread a taken allocator lock is waited for in a loop that carries out the

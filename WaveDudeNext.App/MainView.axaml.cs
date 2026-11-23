@@ -715,6 +715,14 @@ public partial class MainView : UserControl
 	/// A file dropped anywhere on the view opens it (after the save question), as the WPF window does: the first with a
 	/// path on a desktop; a file without one, the first, from its contents (<see cref="OpenPickedAsync"/>). Not under
 	/// a dialog over the view, which has the application to itself.
+	/// <para>
+	/// In the browser head a drop from outside the page arrives here without its data (2026-11-15, measured: the page's
+	/// own drop event carries the file, the data transfer here has no format at all): Avalonia.Browser's script hands
+	/// .NET the browser's live items, which the browser empties when the event's handlers have returned, and on the
+	/// threaded runtime .NET reads them only after that. The head therefore reads a drop itself, while the browser
+	/// still has it (<see cref="App.PageDrops"/>, 2026-11-20), and an empty drop is taken from there: its first file
+	/// from its contents. Dropped objects, text, are the pictures' and the tree's, which ask the same place.
+	/// </para>
 	/// </summary>
 	private async void OnDrop(object? sender, DragEventArgs e)
 	{
@@ -723,6 +731,16 @@ public partial class MainView : UserControl
 		Logger.Debug("Drop on the view: {Files} file(s), formats: {Formats}{Dialog}", items?.Count ?? 0, formats.Length > 0 ? formats : "none", dialogOverlay.IsOpen ? "; ignored under a dialog" : "");
 		if (dialogOverlay.IsOpen)
 		{
+			return;
+		}
+		if (formats.Length == 0 && App.PageDrops is { } page)
+		{
+			IReadOnlyList<string> names = page.Files();
+			Logger.Debug("The drop as the page itself read it: {Files} file(s){First}", names.Count, names.Count > 0 ? ", the first '" + names[0] + "'" : "");
+			if (names.Count > 0 && await ConfirmDiscardAsync())
+			{
+				await OpenContentsAsync(names[0], () => page.ReadAsync(0), null);
+			}
 			return;
 		}
 		if (items is not { Count: > 0 })

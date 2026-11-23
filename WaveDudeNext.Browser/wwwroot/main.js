@@ -153,6 +153,38 @@ globalThis.waveDudeStarted = () => {
 	}
 };
 
+// While the application has the keyboard, the browser's own answer to a key is held back at the moment the key
+// arrives (2026-11-20, the user's word on two faults known since 2026-11-15: every Tab moved the browser's focus off
+// the application's element, after which no key reached the application any more, and F1 opened the manual and the
+// browser's own help; F5, the application's Run, loaded the page again, F6, F7 and F10 went to the browser's
+// toolbar, Ctrl+S saved the page). Avalonia's script does hold it back for every key, but only when .NET has
+// answered (input.ts at 12.1.5: OnKeyDown(…).then(… preventDefault())), which on the threaded runtime is after
+// the browser has acted. The key itself still goes to Avalonia as before: nothing is stopped here but the default.
+//
+// Left to the browser, since the application has no use for them and the visitor does:
+//   - a character being typed (a key that is a character, without Ctrl, Alt or the Mac's command key; AltGr's
+//     characters; a dead key or an input method at work), exactly as it was before this handler;
+//   - F11 and F12, the full screen and the developer tools;
+//   - the browser's zoom, Ctrl with plus, minus or 0 (View > UI zoom names it as the zoom of this version);
+//   - loading the page again by Ctrl+R or Ctrl+F5. F5 alone is Run and Shift+F5 is Stop, as on a desktop;
+//   - Ctrl+V in a browser that gives a page no way to read the clipboard but its own paste event, which follows
+//     the key only when the key's default stands (Avalonia leaves it standing there for the same reason).
+// The keys a browser keeps for itself whatever a page does (new tab, new window, close) never get here.
+const application = document.getElementById('out');
+const browsersOwn = event => {
+	const key = event.key;
+	if (event.isComposing || key === 'Dead' || key === 'Process' || key === 'Unidentified') { return true; }
+	const command = event.ctrlKey || event.metaKey;
+	if (key.length === 1 && (event.getModifierState('AltGraph') || (!command && !event.altKey))) { return true; }
+	if (key === 'F11' || key === 'F12') { return true; }
+	if (!command || event.altKey) { return false; }
+	if ((key === 'v' || key === 'V') && !(navigator.clipboard && (navigator.clipboard.read || navigator.clipboard.readText))) { return true; }
+	return key === '+' || key === '-' || key === '=' || key === '_' || key === '0' || key === 'r' || key === 'R' || key === 'F5';
+};
+globalThis.addEventListener('keydown', event => {
+	if (application.contains(event.target) && !browsersOwn(event)) { event.preventDefault(); }
+}, { capture: true });
+
 // The notice a crash leaves on the page (2026-11-14, the user's request): "WaveDude Next has stopped", the error's
 // words and a button that loads the page again. A page is not a process: when the program in it dies, the page
 // stands there as it was and no longer answers, and what happened is a line in a console a visitor does not open.

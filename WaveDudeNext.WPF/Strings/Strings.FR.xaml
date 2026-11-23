@@ -133,6 +133,8 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="AboutOff">désactivé</s:String>
 	<s:String x:Key="AboutOpenClDevices">Périphériques OpenCL</s:String>
 	<s:String x:Key="AboutOpenClMissing">OpenCL n'est pas installé</s:String>
+	<s:String x:Key="AboutGpuSettingWebGpu">Réglage GPU (WebGPU)</s:String>
+	<s:String x:Key="AboutWebGpuDevice">Périphérique WebGPU</s:String>
 	<s:String x:Key="AboutH264Encoders">Encodeurs H.264</s:String>
 	<s:String x:Key="AboutMediaFoundationMissing">Media Foundation n'est pas disponible</s:String>
 	<s:String x:Key="AboutFfmpegMissing">ffmpeg n'est pas installé</s:String>

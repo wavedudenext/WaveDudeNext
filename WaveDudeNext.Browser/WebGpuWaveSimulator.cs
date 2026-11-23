@@ -58,6 +58,9 @@ public sealed partial class WebGpuWaveSimulator : IWaveEngine, IDisposable
 	private static string _adapter = "";
 	private static bool _described;
 
+	/// <summary>The graphics adapter the engines run on, as the browser names it; empty until the first engine is made, and where there is none. Any thread.</summary>
+	public static string Adapter => _adapter;
+
 	private readonly int _width;
 	private readonly int _height;
 	private readonly int _rim;
