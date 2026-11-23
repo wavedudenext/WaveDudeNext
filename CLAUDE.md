@@ -305,7 +305,17 @@ FrameStore: native memory up to the budget, the rest in a temp file (%LOCALAPPDA
   allocation at the commit limit first, and a run that filled the physical measure left no room for the preview's
   bitmap, which took the app down; a failed bitmap is now logged and the picture stays empty) minus 2 GB, capped by
   Simulation > RAM cache size (Auto or a share); the
-  outgoing run's frames count as reclaimed and the new store waits for their release. No memory mapping, no OS
+  outgoing run's frames count as reclaimed and the new store waits for their release: **what that run holds
+  (`FrameStore.HeldBytes`, the blocks made so far), not what it was planned to hold (`RamBytes`)** (2026-11-19, the
+  user's report while testing for 0.1.4, in every version since 2026-10-16, 0.1.3 included: a run stopped early, by
+  an edit or a quality change, was credited with its whole plan, so the run after it was reckoned to fit, no memory
+  warning came and no file was planned, and Windows paged. His session: Example 22 at 38,000 steps, an 8-bit run
+  planned at 27.5 GB cancelled at 0.6 GB by the switch to 16-bit, then the 16-bit run "19000 in memory (55.0 GB)"
+  twice without a question, the second stopped by him at 35 GB; the next session's warning named 39.4 GB of room.
+  Proven without a window by a run host with a warning that answers Cancel, on the assemblies before and after:
+  started without the warning at 39.2 GB of room, and asked with "need 55.0 GB, RAM cache 39.0 GB"; `library_check`
+  proves the held bytes of a store planned for 1000 frames with 10 written, of a full one and of a disposed one,
+  and the report's figures through the budget's arithmetic.) No memory mapping, no OS
   cache reliance (both wrote at disk speed). Disposed on the thread pool. Full HD, 2500 steps, both planes: 10.4 GB
   in 16-bit, half in 8-bit. The producer touches a fresh block's pages on up to four cores (2026-11-03: Windows zeroes
   pages at 5 GB/s for one thread, 1.7 ms a full-HD block, which had been the writer's clock); the writer's copy into the

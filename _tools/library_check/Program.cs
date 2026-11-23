@@ -1928,6 +1928,42 @@ internal static class Program
 			Check(same, "every frame reads back from its tier");
 		}
 		Check(!File.Exists(path), "tiered store: file deleted on dispose");
+		// what a store holds against what it was planned to hold (2026-11-19, the user's report: a run of 55 GB started
+		// without the memory warning on 39 GB of room, behind a run planned at 27.5 GB and cancelled at 0.6 GB, whose whole
+		// plan had been counted as memory it would give back): the blocks made so far, a few ahead of the writer, and
+		// the plan only once every frame is written
+		path = Path.Combine(Path.GetTempPath(), "library_check-held-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
+		var planned = FrameStore.Create(path, scene.Width, scene.Height, FrameLayers.Field | FrameLayers.Intensity, 1000, 2, ramBudget: 1L << 30);
+		try
+		{
+			for (int frame = 0; frame < 10; frame++)
+			{
+				planned.Write(frame, cpu.FieldData, cpu.IntensityData, cpu.Stride);
+			}
+			Thread.Sleep(100); // the producer's few blocks ahead
+			long held = planned.HeldBytes;
+			Check(planned.RamFrames == 1000 && planned.RamBytes == 1000 * planned.FrameBytes && held >= 10 * planned.FrameBytes && held <= 16 * planned.FrameBytes,
+				"a store planned for 1000 frames in memory holds its 10 written ones and a few made ahead (" + held / planned.FrameBytes + " blocks), not the plan");
+			// the report's figures through the budget's arithmetic at Auto: 41.4 GB available, the outgoing run planned at 27.5 GB and holding 0.6 GB
+			const long gigabyte = 1L << 30;
+			long need = 55 * gigabyte, available = (long)(41.4 * gigabyte);
+			Check(FrameMemory.Budget(available, 64 * gigabyte, FrameMemory.Automatic, (long)(27.5 * gigabyte)) >= need && FrameMemory.Budget(available, 64 * gigabyte, FrameMemory.Automatic, (long)(0.6 * gigabyte)) < need,
+				"the report's run of 55 GB: reckoned to fit with the outgoing run's plan of 27.5 GB counted as freed, not with the 0.6 GB it held");
+		}
+		finally
+		{
+			planned.Dispose();
+		}
+		Check(planned.HeldBytes == 0, "a disposed store holds nothing");
+		path = Path.Combine(Path.GetTempPath(), "library_check-held-" + Guid.NewGuid().ToString("N") + FrameCache.Extension);
+		using (var filled = FrameStore.Create(path, scene.Width, scene.Height, FrameLayers.Field | FrameLayers.Intensity, 20, 2, ramBudget: 1L << 30))
+		{
+			for (int frame = 0; frame < 20; frame++)
+			{
+				filled.Write(frame, cpu.FieldData, cpu.IntensityData, cpu.Stride);
+			}
+			Check(filled.HeldBytes == filled.RamBytes && filled.RamBytes == 20 * filled.FrameBytes, "a store with every frame written holds its plan");
+		}
 		// the same two tiers with a head's own storage in the frame cache's place (2026-11-13: the browser head's is the
 		// storage the browser manages for the page): the store's file is that storage's, sized, written, read and closed there
 		IFrameStorage disk = FrameCache.Storage;

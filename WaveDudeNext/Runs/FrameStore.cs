@@ -85,6 +85,8 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	private byte[]? _staging2;
 	private IFrameFile? _file;
 	private volatile int _firstSpilled = NoSpill;
+	/// <summary>Blocks of the memory tier made and not freed: those holding frames and those waiting for the writer (<see cref="HeldBytes"/>).</summary>
+	private int _blocksMade;
 	private int _count;
 	private bool _disposed;
 
@@ -155,6 +157,7 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 				{
 					break;
 				}
+				Interlocked.Increment(ref _blocksMade);
 				TouchPages((IntPtr)block, FrameBytes);
 				try
 				{
@@ -163,6 +166,7 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 				catch (OperationCanceledException)
 				{
 					_allocator.Free((nint)block);
+					Interlocked.Decrement(ref _blocksMade);
 					break;
 				}
 			}
@@ -283,8 +287,20 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 	/// <summary>Bytes all frames of the run take once written, memory and file together (without the file header).</summary>
 	public long TotalBytes => Capacity * FrameBytes;
 
-	/// <summary>Bytes the memory tier takes once its frames are written.</summary>
+	/// <summary>Bytes the memory tier takes once its frames are written: the plan, not what is held now (<see cref="HeldBytes"/>).</summary>
 	public long RamBytes => FirstSpilledFrame * FrameBytes;
+
+	/// <summary>
+	/// Bytes of memory the store holds now: the blocks made so far, those with a frame in them and the few made ahead
+	/// of the writer (<see cref="PrepareDepth"/>). It grows as the run writes, up to <see cref="RamBytes"/>, and is what
+	/// disposing the store gives back, so it is what a run that replaces this one may count as free
+	/// (<see cref="FrameMemory.Budget(int, long)"/>). Until 2026-11-19 that count was <see cref="RamBytes"/>, the whole
+	/// plan: a run stopped early, by an edit or a quality change, had been credited with memory it never took, and the
+	/// run after it was reckoned to fit when it did not (the user's report: a run of 55 GB started without the memory
+	/// warning on 39 GB of room, behind an 8-bit run planned at 27.5 GB and cancelled at 0.6 GB, and Windows paged).
+	/// Any thread.
+	/// </summary>
+	public long HeldBytes => Volatile.Read(ref _blocksMade) * FrameBytes;
 
 	/// <summary>Size of the file, 0 while there is none.</summary>
 	public long FileBytes => _file == null ? 0 : HeaderSize + (Capacity - FirstSpilledFrame) * FrameBytes;
@@ -533,6 +549,7 @@ public sealed unsafe class FrameStore : IFrameSource, IDisposable
 		{
 			_allocator.Free(block);
 		}
+		Volatile.Write(ref _blocksMade, 0);
 		_prepareCancel.Dispose();
 	}
 

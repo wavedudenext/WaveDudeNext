@@ -146,8 +146,10 @@ public sealed class RunHost : ObservableObject
 		RunSpec spec = RunSpec.Create(_document.Project, _scene.Load(), Settings.Default.UseGpu, trackIntensity, quality);
 		// the frames stay in memory up to the budget (the user's share of the RAM, capped by what is free now); only
 		// the rest needs room on the cache drive (2026-10-14). The outgoing run's frames count as free: Discard
-		// below gives them back, and the new store allocates its memory tier only once they are gone (2026-10-16)
-		long budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent, _run?.Store.RamBytes ?? 0);
+		// below gives them back, and the new store allocates its memory tier only once they are gone (2026-10-16).
+		// What that run holds, not what it was planned to hold (2026-11-19, the user's report: a run stopped early was
+		// credited with its whole plan, and the next one started without the warning on memory that was not there)
+		long budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent, _run?.Store.HeldBytes ?? 0);
 		int ramFrames = Math.Min(spec.StoredFrameCount, FrameStore.FramesInBudget(spec.Shape, spec.Layers, budget));
 		// a preview run that does not fit asks first (the memory warning, 2026-11-03, the user's design: F5, Play and the
 		// automatic re-run alike, so no spill is silent; an export's run must be full quality and never asks). The choice
@@ -157,7 +159,7 @@ public sealed class RunHost : ObservableObject
 		if (ramFrames < spec.StoredFrameCount && !fullQuality && Settings.Default.WarnWhenRamInsufficient)
 		{
 			// the budget with the RAM cache size at Auto, the warning's fourth lever: the budget itself when it is Auto already
-			long autoBudget = Settings.Default.FrameMemoryPercent > FrameMemory.Automatic ? FrameMemory.Budget(FrameMemory.Automatic, _run?.Store.RamBytes ?? 0) : budget;
+			long autoBudget = Settings.Default.FrameMemoryPercent > FrameMemory.Automatic ? FrameMemory.Budget(FrameMemory.Automatic, _run?.Store.HeldBytes ?? 0) : budget;
 			IsStarting = true;
 			try
 			{
@@ -184,7 +186,7 @@ public sealed class RunHost : ObservableObject
 				// live while the question was open, so an edit that came without input (the scene image re-embedded from
 				// its file) is in the run, which is marked fresh below
 				spec = RunSpec.Create(_document.Project, _scene.Load(), Settings.Default.UseGpu, trackIntensity, quality);
-				budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent, _run?.Store.RamBytes ?? 0);
+				budget = FrameMemory.Budget(Settings.Default.FrameMemoryPercent, _run?.Store.HeldBytes ?? 0);
 				ramFrames = Math.Min(spec.StoredFrameCount, FrameStore.FramesInBudget(spec.Shape, spec.Layers, budget));
 				Settings.Default.TrySave();
 				Begin(spec, budget, ramFrames, automatic);
