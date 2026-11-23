@@ -1223,6 +1223,12 @@ public sealed class SceneOverlay : Panel
 		/// <summary>The objects' text in <paramref name="data"/>: the application's format, else plain text that starts with an element; null for neither (and when the data cannot be read).</summary>
 		public static string? Text(IDataTransfer data)
 		{
+			// a drag of the application's own that the platform carries (the browser head, App.PageDrags) comes here as
+			// one from outside, its data not readable on its way: the head knows what it is
+			if (App.PageDrags is { Dragged: { } own })
+			{
+				return own;
+			}
 			try
 			{
 				if (data.Contains(ObjectsFormat))

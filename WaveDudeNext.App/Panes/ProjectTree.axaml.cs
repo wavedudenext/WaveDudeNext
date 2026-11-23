@@ -145,6 +145,13 @@ public partial class ProjectTree : UserControl
 	/// <summary>Pixels the pointer must travel with the button down before a row drag starts (the usual system drag distance).</summary>
 	private const double DragThreshold = 4.0;
 
+	/// <summary>
+	/// Pixels within which a press left to the platform (<see cref="IPageDrags"/>) is the platform's to turn into a
+	/// drag: a browser starts its own at a few pixels and takes the pointer with it, so a pointer that is still
+	/// reported beyond this was not taken, and the framework's drag starts.
+	/// </summary>
+	private const double PlatformDragReach = 4 * DragThreshold;
+
 	private const string InSelectionClass = "inSelection";
 	private const string InSelectionStatus = "InSelection";
 	private const string InactiveClass = "inactive";
@@ -168,6 +175,14 @@ public partial class ProjectTree : UserControl
 	private bool _dragging;
 	/// <summary>The list item a drag from this tree carries, which a drop on this tree reorders; null while a settings row is dragged.</summary>
 	private object? _dragItem;
+	/// <summary>
+	/// The row the head's own drag source is armed with (<see cref="IPageDrags"/>, the browser head): the one under the
+	/// pointer, whose press the platform may turn into a drag of its own; null for none, and in a head without such a
+	/// source.
+	/// </summary>
+	private object? _armed;
+	/// <summary>Whether the press on <see cref="_armed"/> was left to the platform, which starts that drag itself: the framework's drag is not started then.</summary>
+	private bool _platformPress;
 	/// <summary>The objects a drag from elsewhere carries, parsed once per drag.</summary>
 	private readonly DraggedObjects _dragged = new();
 	private InsertionLine? _insertionLine;
@@ -197,6 +212,13 @@ public partial class ProjectTree : UserControl
 		tree.AddHandler(PointerPressedEvent, OnTreePointerPressed, RoutingStrategies.Tunnel);
 		tree.PointerMoved += OnTreePointerMoved;
 		tree.PointerReleased += OnTreePointerReleased;
+		// a head whose platform carries a row's drag itself (the browser head): it is told which row the pointer is over
+		if (App.PageDrags is { } drags)
+		{
+			tree.PointerExited += (_, _) => Arm(null);
+			drags.Started += OnPlatformDragStarted;
+			drags.Ended += OnPlatformDragEnded;
+		}
 		tree.ContextRequested += OnTreeContextRequested;
 		// DragEnter as DragOver: AllowDrop is inherited in Avalonia as in WPF, so every element under the pointer is a drop
 		// target of its own, and where the pointer goes from one to the next the drag device raises DragLeave for the one and
@@ -944,18 +966,16 @@ public partial class ProjectTree : UserControl
 	{
 		_dragCandidate = null;
 		_dragPress = null;
+		// asked at every press, so one the platform took and this tree does not drag is forgotten
+		bool platformPress = App.PageDrags?.TakePress() == true;
+		_platformPress = false;
 		if (e.Source is not Visual origin || !e.GetCurrentPoint(tree).Properties.IsLeftButtonPressed)
 		{
 			return;
 		}
-		if (origin.FindAncestorOfType<Button>(includeSelf: true) != null)
+		if (DraggableAt(origin) is not { } node || Project is not { } project)
 		{
 			return; // row buttons, check boxes and the expander are clicks, not drags
-		}
-		if (origin.FindAncestorOfType<TreeViewItem>(includeSelf: true) is not { DataContext: { } node } || Project is not { } project
-			|| !ProjectClipboard.CanCopy(project, node))
-		{
-			return;
 		}
 		if (node is INamed && TryModifiedClick(node, e.KeyModifiers))
 		{
@@ -965,18 +985,87 @@ public partial class ProjectTree : UserControl
 		_dragCandidate = node;
 		_dragPress = e;
 		_dragStart = e.GetPosition(tree);
+		if (App.PageDrags is { } drags)
+		{
+			// the row as it is at the press: what was armed when the pointer came over it may be older
+			_armed = node;
+			drags.Arm(ProjectClipboard.Write(project, [node]));
+			_platformPress = platformPress;
+			Logger.Trace("A press on the row {Row}; left to the platform: {Platform}", (node as INamed)?.Name ?? node.GetType().Name, platformPress);
+		}
 	}
 
 	private void OnTreePointerReleased(object? sender, PointerReleasedEventArgs e)
 	{
 		_dragCandidate = null;
 		_dragPress = null;
+		_platformPress = false;
+	}
+
+	/// <summary>The row a press at <paramref name="origin"/> may drag: a row of something Copy takes, and not one of its buttons, its check box or its expander, which are clicks; null for none.</summary>
+	private object? DraggableAt(Visual origin) =>
+		origin.FindAncestorOfType<Button>(includeSelf: true) == null
+		&& origin.FindAncestorOfType<TreeViewItem>(includeSelf: true) is { DataContext: { } node }
+		&& Project is { } project && ProjectClipboard.CanCopy(project, node) ? node : null;
+
+	/// <summary>
+	/// Tells the head's own drag source which row the pointer is over, with the row's text, or that it is over none
+	/// (<see cref="IPageDrags"/>); nothing in a head without such a source, nor for the row told last.
+	/// </summary>
+	private void Arm(object? node)
+	{
+		if (App.PageDrags is not { } drags || ReferenceEquals(node, _armed))
+		{
+			return;
+		}
+		_armed = node;
+		Logger.Trace("The platform's drag is armed with {Row}", node == null ? "nothing" : (node as INamed)?.Name ?? node.GetType().Name);
+		drags.Arm(node != null && Project is { } project ? ProjectClipboard.Write(project, [node]) : null);
+	}
+
+	/// <summary>The platform has started the drag of the row that was armed: a drag of this tree's from here on, as one the framework started is.</summary>
+	private void OnPlatformDragStarted(object? sender, EventArgs e)
+	{
+		Logger.Trace("The platform's drag has started; armed here: {Row}", _armed == null ? "nothing" : (_armed as INamed)?.Name ?? _armed.GetType().Name);
+		// the platform has the pointer now and its release never comes here: the pressed row lets go of it, or it
+		// would stay the pointer's target after the drag (seen: the next hover and click went to the row dragged last)
+		_dragPress?.Pointer.Capture(null);
+		if (_armed is not { } item)
+		{
+			return;
+		}
+		_dragCandidate = null;
+		_dragPress = null;
+		_platformPress = false;
+		_dragItem = ListOf(item) != null ? item : null;
+		_dragging = true;
+	}
+
+	/// <summary>
+	/// That drag is over, dropped or not, here or in another tab. Nothing is armed any more: the pointer's moves did
+	/// not come here while the platform had the drag, so where it is now is not known until it moves again.
+	/// </summary>
+	private void OnPlatformDragEnded(object? sender, EventArgs e)
+	{
+		_dragging = false;
+		_dragItem = null;
+		_dragged.Clear();
+		ClearInsertionLine();
+		Arm(null);
 	}
 
 	private async void OnTreePointerMoved(object? sender, PointerEventArgs e)
 	{
-		if (_dragCandidate is not { } item || _dragPress is not { } press || Project is not { } project
-			|| !e.GetCurrentPoint(tree).Properties.IsLeftButtonPressed)
+		if (!e.GetCurrentPoint(tree).Properties.IsLeftButtonPressed)
+		{
+			// the pointer over a row, no button down: the row a press would drag
+			if (App.PageDrags != null && !_dragging)
+			{
+				Arm(e.Source is Visual over ? DraggableAt(over) : null);
+			}
+			return;
+		}
+		if (_dragCandidate is not { } item || _dragPress is not { } press || Project is not { } project)
 		{
 			return;
 		}
@@ -985,6 +1074,14 @@ public partial class ProjectTree : UserControl
 		{
 			return;
 		}
+		if (_platformPress && Math.Abs(moved.X) < PlatformDragReach && Math.Abs(moved.Y) < PlatformDragReach)
+		{
+			// the platform starts this drag itself, at its own threshold, and says so (OnPlatformDragStarted); from
+			// then on the pointer's moves no longer come here
+			return;
+		}
+		// a pointer that still comes here this far out was not taken by the platform: the framework's drag, as ever
+		_platformPress = false;
 		_dragCandidate = null;
 		_dragPress = null;
 		string text = ProjectClipboard.Write(project, [item]);

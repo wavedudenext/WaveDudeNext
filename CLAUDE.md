@@ -3022,6 +3022,34 @@ one meanwhile, and the App's `CutAsync` tells the edit's end. Proven in the head
 `navigator.clipboard.write` that refuses what `ClipboardItem.supports` refuses, or everything: copy and paste,
 cut and paste, and a refused cut that leaves the row and shows the warning. Not run: the desktop Avalonia head
 (its clipboard is the user's own), where Cut now also waits for the clipboard.
+**Drags**: inside the page they had worked (a reorder in the tree, a row onto a picture). What could not: a row
+dragged into another tab or a text editor, as between two windows on a desktop. Avalonia has no drag source in
+a browser (its script has neither `dragstart` nor `draggable`), so `DragDrop.DoDragDropAsync` is its in-process
+drag, which ends at the page's edge; and a browser starts a drag of its own only from a press on a draggable
+element whose default was not cancelled, while Avalonia's `pointerdown` handler cancels every press's.
+`IPageDrags` (`App.PageDrags`, the browser head's `PageDrags` with `wwwroot/page-drag.js`): the tree says which
+row the pointer is over, with the row's text (`Arm`, at a hover and again at the press); while something is
+armed the application's element is `draggable` and a capturing `pointerdown` listener makes that one event's
+`preventDefault` do nothing (the left mouse button alone; a finger's or a pen's drag stays the framework's) and
+notes the press (`TakePress`, asked by the tree's press handler, which then starts no drag of the framework's);
+at `dragstart` the drag gets the text as `text/plain`, `copyMove` and a 1 × 1 picture in place of the browser's
+ghost of the whole page, and `Started` reaches the UI thread ahead of the waiting input, `Ended` (`dragend`)
+behind it, so a drop on the page itself is handled while the drag is still known. Inside the page the browser's
+drag comes back through Avalonia's native drop events with unreadable data: the tree goes by `_dragItem` as
+ever, the pictures ask `PageDrags.Dragged`. **Found on the way**: after the browser's `pointercancel` Avalonia
+keeps the pointer captured by the pressed row, no release ever coming, so the next hover and click went to the
+row dragged last; the tree releases the capture at `Started`. A pointer still reported 16 px out
+(`PlatformDragReach`) was not taken by the browser, and the framework's drag starts as before. **A colour scheme
+file dropped on the page** is added to the project (`ProjectDocument.TryOpen` from contents tells it by its
+extension; it had been refused in words). Proven in a headless Edge: with `Input.setInterceptDrags` the
+browser's drag shows as `Input.dragIntercepted` with the row's XML as `text/plain`; not intercepted, the browser
+carries a mouse-made drag through to the drop itself: a row onto each picture ("Source 1 copy" at the drop's
+pixel), a reorder, a click on a row afterwards, and text dropped as another tab would bring it
+(`Input.dispatchDragEvent`). **The user tried it by hand the same day**: copy and paste and drag and drop between
+two browser instances, and between the browser and the native version, "seems to work fine". **Not seen**:
+Firefox and Safari, a drag's look under the pointer. **Harness notes**: the viewport override ends with the debugging session, and a session without it
+clicks at other places than the screenshots show (half an hour lost to it); `ClipboardItem.supports(type)`
+answers what a page may write without touching the clipboard.
 **The loading mark is the icon, the name and a bar with the megabytes** (2026-11-22, the user's word on the spinner
 over the name: it "does its job, but looks like ass"; his choice, A, of five looks drawn as a page of mock-ups,
 all "logo and progress": A as built, B a ring around the round icon, C the progress as the application's blue

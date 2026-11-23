@@ -96,6 +96,13 @@ public partial class App : Application
 	public static IPageDrops? PageDrops { get; set; }
 
 	/// <summary>
+	/// The head's own drag source, where a drag of the framework's cannot leave the application
+	/// (<see cref="IPageDrags"/>: the browser head, whose browser carries a row's drag into another tab); null
+	/// elsewhere, where the framework's drag is the platform's. Set once, by the head, before the application starts.
+	/// </summary>
+	public static IPageDrags? PageDrags { get; set; }
+
+	/// <summary>
 	/// The graphics device of a head whose GPU engine is not the OpenCL one, for the About box's system facts: its
 	/// name, empty while no engine has been made yet or where the head found none. The browser head's, whose engine
 	/// is WebGPU's (2026-11-20: its About box had named OpenCL, which a browser does not have, as "not installed", and

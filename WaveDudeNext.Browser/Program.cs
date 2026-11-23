@@ -97,6 +97,7 @@ internal static partial class Program
 			Task<LocalStorageSettings> settings = LocalStorageSettings.CreateAsync();
 			Task<SystemFont?> systemFont = SystemFont.CreateAsync();
 			Task<PageDrops> drops = PageDrops.CreateAsync();
+			Task<PageDrags> drags = PageDrags.CreateAsync();
 			Task<PlatformH264Encoder?> encoder = WebCodecsH264Encoder.FindAsync();
 			// the user settings are kept in the browser's local storage (2026-11-14, the user's choice), where the desktop
 			// heads have a file; before anything asks for a setting, since the settings are read at their first use
@@ -125,6 +126,15 @@ internal static partial class Program
 			catch (Exception ex)
 			{
 				App.App.Logger.Warn(ex, "The script that reads a drop could not be loaded: files and text dropped on the page are not taken");
+			}
+			// and a drag out of the page is the browser's own, since the framework's cannot leave the page (page-drag.js)
+			try
+			{
+				App.App.PageDrags = await drags;
+			}
+			catch (Exception ex)
+			{
+				App.App.Logger.Warn(ex, "The script of the browser's drag could not be loaded: a row is dragged inside the page alone");
 			}
 			App.App.Logger.Debug("The page's scripts had answered {Elapsed:0} ms after they were asked", Stopwatch.GetElapsedTime(asked).TotalMilliseconds);
 			// the browser's own H.264 encoder is not waited for: its answer is wanted at the first export, and a browser
