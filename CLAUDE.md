@@ -2896,6 +2896,21 @@ for `PackedSimd.ConvertToInt32Saturate`); `Vector.ShiftRightLogical` takes twice
 in the conversions there. `library_check`'s byte-for-byte comparison with the pixel-by-pixel formula holds (the
 painted Example 16, noise at Full HD and at 5 × 3), in the browser's build 0 bytes of a Full HD picture of noise
 differ; 162 → 71 ms there on one thread, natively the same as before (11 to 14 ms in `bench-paint`, both).
+**Start-up and download, measured**: a start on this machine is 0.6 s of download, 0.95 s until `Main`'s first line
+(the runtime; 45 MB of WebAssembly to compile), 0.5 s for the head's own preparations, and 1.0 s from Avalonia's
+start to "ready" (the main view), 3.2 to 3.5 s in all. What the page's scripts are asked for at the start
+(settings, the system's font, drops, the encoder) is asked all at once now, where each had been a trip to the
+server of its own: they answer after 0.26 to 0.36 s in the Debug build and 0.21 s in the compiled one, where the
+whole start measured the same before and after (3.4 to 3.5 s from the page's request to "ready", a second load).
+The download is 66.9 MB, 21.7 MB as gzip (what GitHub
+Pages sends), 16.1 MB as brotli: the compiled program 13.3 MB of the gzip, `WaveDudeNext.App` 3.65 MB, of which
+3.3 MB are the manual's 51 figures (PNGs in base64, which hardly compress), fetched by every visitor before
+anything shows. **Put to him, not done**: the figures out of the start's download (a build step that takes them
+out of the browser's copy of the assembly and a fetch when the manual opens), a host that sends brotli; trimming
+our three assemblies and compiling only part of the program are not worth their risk.
+**Text on whole pixels**: `WholePixelShaper` is installed in the browser head as on the desktop
+(`AfterPlatformServicesSetup` in `Program.BuildAvaloniaApp`; its `Install` forgives a `NotSupportedException` too):
+stems whole 195 → 312, split 97 → 75 in one capture of the window, counted along every row.
 **The loading mark is the icon, the name and a bar with the megabytes** (2026-11-22, the user's word on the spinner
 over the name: it "does its job, but looks like ass"; his choice, A, of five looks drawn as a page of mock-ups,
 all "logo and progress": A as built, B a ring around the round icon, C the progress as the application's blue

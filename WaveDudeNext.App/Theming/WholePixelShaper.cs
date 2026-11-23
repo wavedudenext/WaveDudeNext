@@ -89,7 +89,8 @@ public class WholePixelShaper : DispatchProxy
 			toConstant.Invoke(helper, [proxy]);
 			Logger.Debug("Whole-pixel shaper installed in front of {0}", platform.GetType().FullName);
 		}
-		catch (Exception e) when (e is InvalidOperationException or TargetInvocationException or ArgumentException or MemberAccessException or TypeLoadException)
+		catch (Exception e) when (e is InvalidOperationException or TargetInvocationException or ArgumentException or MemberAccessException or TypeLoadException
+			or NotSupportedException)
 		{
 			Logger.Warn("Whole-pixel shaper not installed; the text is placed on quarter pixels: {0}", e.InnerException?.Message ?? e.Message);
 		}

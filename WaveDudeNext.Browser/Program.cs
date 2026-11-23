@@ -15,6 +15,7 @@
 // version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 // <https://www.gnu.org/licenses/>.
 
+using System.Diagnostics;
 using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
 using Avalonia;
@@ -22,6 +23,7 @@ using Avalonia.Browser;
 using Avalonia.Media;
 using Avalonia.Media.Fonts;
 using Avalonia.Threading;
+using WaveDudeNext.App.Theming;
 using WaveDudeNext.Engine;
 using WaveDudeNext.Runs;
 using WaveDudeNext.UI;
@@ -84,11 +86,17 @@ internal static partial class Program
 		if (scripts != null)
 		{
 			ScriptThread.Use(scripts);
+			// what the page's scripts are asked for at the start is asked all at once (2026-11-22): each is a script
+			// fetched from the server and a question or two, none needs another's answer, and one after the other they
+			// were as many trips to the server ahead of the application's own start
+			long asked = Stopwatch.GetTimestamp();
+			Task<LocalStorageSettings> settings = LocalStorageSettings.CreateAsync();
+			Task<SystemFont?> systemFont = SystemFont.CreateAsync();
 			// the user settings are kept in the browser's local storage (2026-11-14, the user's choice), where the desktop
 			// heads have a file; before anything asks for a setting, since the settings are read at their first use
 			try
 			{
-				SettingsStore.Current = await LocalStorageSettings.CreateAsync();
+				SettingsStore.Current = await settings;
 			}
 			catch (Exception ex)
 			{
@@ -100,8 +108,9 @@ internal static partial class Program
 			// the system's own font in place of the one this head carries, where the browser hands a page the installed
 			// fonts and the user has allowed it (the View menu's "Use the system's font", 2026-11-14, the user's design);
 			// where the permission was given on an earlier visit the page has read the faces by now
-			_systemFont = await SystemFont.CreateAsync();
+			_systemFont = await systemFont;
 			App.App.SystemFont = _systemFont;
+			App.App.Logger.Debug("The page's scripts had answered {Elapsed:0} ms after they were asked", Stopwatch.GetElapsedTime(asked).TotalMilliseconds);
 		}
 		// the browser's GPU engine stands in for the OpenCL one, which a browser does not have; where the browser has
 		// no WebGPU either, the factory says why and gives the CPU engine
@@ -132,11 +141,15 @@ internal static partial class Program
 	/// Avalonia's Skia backend takes an unspecified hinting mode as full hinting by the font's own instructions
 	/// (<c>GlyphRunImpl.CreateFont</c>, read at 12.1.5). Where the system's own font came with the page's load it takes
 	/// the carried one's place before the view exists (<see cref="SystemFont.UseAtStart"/>; the builder runs these
-	/// after the application's own initialisation and before its view is made, in the order given here).
+	/// after the application's own initialisation and before its view is made, in the order given here). The glyphs
+	/// are placed on whole pixels as in the desktop head (<see cref="WholePixelShaper"/>, 2026-11-21, the user's
+	/// choice: without it this head's stems lay across two columns); it is bound once the platform's services are up
+	/// and before any text is shaped, and where it cannot be, the head runs without it and says so in the log.
 	/// </summary>
 	public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App.App>()
 		.ConfigureFonts(fonts => fonts.AddFontCollection(new EmbeddedFontCollection(
 			new Uri(FontCollectionKey, UriKind.Absolute), new Uri(FontSource, UriKind.Absolute))))
+		.AfterPlatformServicesSetup(_ => WholePixelShaper.Install())
 		.AfterSetup(_ =>
 		{
 			_systemFont?.UseAtStart();
