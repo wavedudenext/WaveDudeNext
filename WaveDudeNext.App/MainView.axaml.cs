@@ -47,8 +47,11 @@ namespace WaveDudeNext.App;
 /// A view and not a window (2026-11-12, for the browser head, which has no windows): the desktop head's
 /// <see cref="MainWindow"/> hosts it and keeps the title, the placement, the closing and the zoom; the browser head
 /// shows it as its single view. What needs the top level it sits in (the key bindings, which must work with the focus
-/// anywhere, F10, a window's activation) is put there when the view joins it; what needs a window (the dialogs, About,
-/// the manual, Exit) asks for <see cref="OwnerWindow"/> and, where there is none yet, says so in the log.
+/// anywhere, F10, a window's activation) is put there when the view joins it. The dialogs (the message box, the
+/// memory warning, About, the manual) are views too, each shown in a window of its own over the view's window and,
+/// where there are no windows, over the view itself, in the <see cref="DialogOverlay"/> the markup holds above the
+/// content (2026-11-15, the user's design: the same markup for both heads); Exit closes the view's window and does
+/// nothing where there is none.
 /// </para>
 /// </summary>
 public partial class MainView : UserControl
@@ -135,6 +138,13 @@ public partial class MainView : UserControl
 		OnProjectReplaced();
 		DataContext = this;
 		InitializeComponent();
+		dialogOverlay.PropertyChanged += (_, args) =>
+		{
+			if (args.Property == DialogOverlay.IsOpenProperty)
+			{
+				OnDialogsChanged();
+			}
+		};
 		// an edit has finished when the view's input says so: the undo step ends, the stale run is redone
 		_boundaries = new EditBoundaries(this, OnEditFinished);
 		WireCommands();
@@ -159,7 +169,7 @@ public partial class MainView : UserControl
 		AddHandler(DragDrop.DropEvent, OnDrop);
 	}
 
-	/// <summary>The window this view is in, the owner of its dialogs; null where the platform has no windows (the browser) and before the view is shown.</summary>
+	/// <summary>The window this view is in, which Exit closes; null where the platform has no windows (the browser) and before the view is shown.</summary>
 	private Window? OwnerWindow => TopLevel.GetTopLevel(this) as Window;
 
 	/// <summary>
@@ -362,14 +372,9 @@ public partial class MainView : UserControl
 			Logger.Debug("Edits discarded without asking (WAVEDUDE_DISCARD_EDITS)");
 			return true;
 		}
-		if (OwnerWindow is not { } owner)
-		{
-			// the browser head has no dialogs yet, and no way to save either: the edits go, and the log says so
-			Logger.Info("Edits discarded without asking: this head cannot ask yet");
-			return true;
-		}
+		// in the application's own message box: a window over the view's on a desktop, over the view itself in a browser
 		string name = Document.Filename != null ? Path.GetFileName(Document.Filename) : Text("Untitled");
-		MessageAnswer answer = await MessageWindow.Show(owner, string.Format(Text("SaveChangesFormat"), name), MessageKind.Question, MessageButtons.SaveDiscardCancel);
+		MessageAnswer answer = await MessageView.Show(this, string.Format(Text("SaveChangesFormat"), name), MessageKind.Question, MessageButtons.SaveDiscardCancel);
 		return answer switch
 		{
 			MessageAnswer.Save => await SaveAsync(),
@@ -378,16 +383,11 @@ public partial class MainView : UserControl
 		};
 	}
 
-	/// <summary>Shows an error with the exception's own words on a second line; where no window can show it yet (the browser head), the log carries it, and with the log the status bar and the Messages pane.</summary>
+	/// <summary>Shows an error in the application's message box, with the exception's own words on a second line.</summary>
 	private Task ShowErrorAsync(string message, Exception? error)
 	{
 		string text = error == null ? message : message + Environment.NewLine + (error is RunSpecException { Key: { } key } && this.TryFindResource(key, out object? reason) && reason is string words ? words : error.Message);
-		if (OwnerWindow is { } owner)
-		{
-			return MessageWindow.Show(owner, text, MessageKind.Error, MessageButtons.Ok);
-		}
-		Logger.Error(error, "{Message}", text.ReplaceLineEndings(" "));
-		return Task.CompletedTask;
+		return MessageView.Show(this, text, MessageKind.Error, MessageButtons.Ok);
 	}
 
 	/// <summary>The file pickers of the top level the view is in; null before it is shown.</summary>
@@ -539,20 +539,55 @@ public partial class MainView : UserControl
 	/// <summary>The menu bar is out of the Tab cycle: F10 is the way in (the WPF head's rule). Menu.Open is Avalonia's answer to Alt and F10: the first header takes the keyboard focus, Down opens it, Left and Right move between headers.</summary>
 	private void OnTopLevelKeyDown(object? sender, KeyEventArgs e)
 	{
-		if (!e.Handled && e.Key == Key.F10 && e.KeyModifiers == KeyModifiers.None)
+		if (!e.Handled && e.Key == Key.F10 && e.KeyModifiers == KeyModifiers.None && !dialogOverlay.IsOpen)
 		{
 			menu.Open();
 			e.Handled = true;
 		}
 	}
 
-	/// <summary>A file dropped anywhere on the view opens it (after the save question), as the WPF window does.</summary>
+	/// <summary>
+	/// A file dropped anywhere on the view opens it (after the save question), as the WPF window does; not while a
+	/// dialog is over the view, which has the application to itself.
+	/// </summary>
 	private async void OnDrop(object? sender, DragEventArgs e)
 	{
+		if (dialogOverlay.IsOpen)
+		{
+			return;
+		}
 		string? file = e.DataTransfer.TryGetFiles()?.Select(item => item.TryGetLocalPath()).FirstOrDefault(path => path != null);
 		if (file != null && await ConfirmDiscardAsync())
 		{
 			await OpenFileAsync(file);
+		}
+	}
+
+	// ---- the dialogs over the view (a head without windows)
+
+	/// <summary>
+	/// A dialog was opened over the view or the last one closed (<see cref="DialogOverlay"/>, the browser head's
+	/// dialogs): while one is open the application under it is out of reach. The markup disables the content; here the
+	/// view's key bindings leave the top level, where they would be tried before the dialog sees a key (Esc is Stop's),
+	/// and come back when the dialogs have gone, and a menu bar that Alt opened under the dialog is closed again.
+	/// </summary>
+	private void OnDialogsChanged()
+	{
+		if (_topLevel is not { } top)
+		{
+			return;
+		}
+		if (dialogOverlay.IsOpen)
+		{
+			foreach (KeyBinding binding in _keyBindings)
+			{
+				top.KeyBindings.Remove(binding);
+			}
+		}
+		else
+		{
+			top.KeyBindings.AddRange(_keyBindings);
+			menu.Close();
 		}
 	}
 

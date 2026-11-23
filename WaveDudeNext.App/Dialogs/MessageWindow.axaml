@@ -20,27 +20,13 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:dialogs="using:WaveDudeNext.App.Dialogs"
         x:Class="WaveDudeNext.App.Dialogs.MessageWindow"
-        Title="{DynamicResource Title}" Icon="/Assets/wavedudenext.ico"
+        Title="{Binding #view.(dialogs:DialogFrame.Title)}" Icon="/Assets/wavedudenext.ico"
         Width="440" SizeToContent="Height" CanResize="False" ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         AutomationProperties.AutomationId="MessageWindow">
-	<!-- the app's own message box, as upstream's: a disc with "!" or "?" in the theme's colours, the wrapped text, and the
-	     buttons the code-behind adds for the chosen set (Enter takes the default, Esc the cancel button, the underlined
-	     letters work without Alt); a native message box would take the desktop's look, not the app's -->
-	<Window.Styles>
-		<StyleInclude Source="avares://WaveDudeNext.App/Themes/Dialogs.axaml" />
-	</Window.Styles>
-	<Grid Margin="20,18,20,16" RowDefinitions="Auto,Auto">
-		<DockPanel Grid.Row="0">
-			<Panel Width="32" Height="32" Margin="0,0,16,0" VerticalAlignment="Top" DockPanel.Dock="Left">
-				<Ellipse x:Name="iconDisc" />
-				<TextBlock x:Name="iconGlyph" Classes="disc" />
-			</Panel>
-			<TextBlock x:Name="messageText" TextWrapping="Wrap" VerticalAlignment="Center" MinHeight="32"
-			           AutomationProperties.AutomationId="MessageText" />
-		</DockPanel>
-
-		<StackPanel x:Name="buttonRow" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0" />
-	</Grid>
+	<!-- the message box's window on a desktop: the frame around the message's view (MessageView.axaml), which is the
+	     dialog; the browser head, which has no windows, shows the same view over its main view -->
+	<dialogs:MessageView x:Name="view" />
 </Window>

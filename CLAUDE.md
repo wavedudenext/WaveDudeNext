@@ -2612,7 +2612,23 @@ its own: the first visit two loads, the second through the worker with the embed
 the WebGPU engine; a second visit one load, 3.6 s; the frame cache's worker answering; the interface whole in a
 capture. Not seen there: a run, another browser. The build was of the working tree, 120 paths ahead of the pushed
 history. **Still to do for the site, each the user's word**: a workflow in place of the hand copy; a visible link
-to the source and the license, About doing nothing in this head.
+to the source and the license, About doing nothing in this head (it shows since 2026-11-15, with the license and the
+credits; it has no link to the repository in either head).
+**The dialogs are views, and the browser head shows them over the main view** (2026-11-15, the user's design: "the
+XAML from Avalonia.App should be re-usable, if necessary split into a window and a control inside the window"; uncommitted).
+Each of the four dialogs is a `UserControl` with the markup and the logic it had as a window, `MessageView`,
+`MemoryWarningView` (`Dialogs/`), `AboutView`, `ManualView` (`Help/`), an `IDialogView` (`CloseRequested`, `Opened()`,
+`FrameKeyDown(e)`); its window (`MessageWindow` and so on, the ids the harnesses know) is the view under a title bar,
+a few lines that pass the keys on and close when the view asks, and keeps its own sizes. `DialogFrame`, attached
+properties on a view's root, names the title (the windows bind theirs to it) and the size the view has where the frame
+is not a window. Each view's static `Show(anchor, …)` picks the frame: the window where the anchor is in one,
+else `DialogOverlay`, a panel the main view's markup holds above its content, with a `DialogOverlayFrame` (a veil, an
+accent outline, a title strip in the active pane's colours with a close button) per open dialog, the newest in front.
+**Modal there by three things**: the content's `IsEnabled` is bound to `!IsOpen` (so no access key or pointer reaches
+it; it looks disabled under the veil, mine, his to change), the view's key bindings leave the top level while a dialog
+is open (Avalonia tries them before the focused control sees a key, `KeyboardDevice.ProcessRawEvent`, read at 12.1.5:
+Esc is Stop's), and Tab cycles in the frame; the focus goes back where it was. A view as high as its content scrolls
+in the frame where the page is lower (About at 1000 × 520); the manual, which names a height, shrinks with the page.
 **Where the browser's compiled build loses against native, measured** (2026-11-21, the user's question whether the
 ahead-of-time compiling the browser needs has the faults ReadyToRun had on the desktop, and his word to test each
 workaround; a bench app under `%TEMP%` on the repository's library, native beside the browser's build, the tables

@@ -44,8 +44,6 @@ public partial class MainView
 	/// <summary>The choices of Simulation > RAM cache size: automatic and 10 % to 100 % of the RAM as an upper bound (2026-10-15, the user's design).</summary>
 	public static int[] FrameMemoryOptions { get; } = [FrameMemory.Automatic, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
-	private ManualWindow? _manual;
-
 	/// <summary>Where on the shown canvas a new item lands: its centre (2026-10-26, Jeroen's report).</summary>
 	private (int X, int Y) CanvasCentre => (Preview.CanvasWidth / 2, Preview.CanvasHeight / 2);
 
@@ -126,20 +124,11 @@ public partial class MainView
 		c.Save = Command(_ => Fire(SaveAsync()));
 		c.SaveAs = Command(_ => Fire(SaveAsAsync()));
 		c.CloseProject = Command(_ => Fire(CloseProjectAsync()), _ => Document.Filename != null);
-		// Exit, About and the manual need a window: the desktop head's; the browser head has none (its dialogs are to come)
+		// Exit needs a window, the desktop head's; About and the manual are shown in a window of their own there, and
+		// over this view in the browser head, which has no windows
 		c.Exit = Command(_ => OwnerWindow?.Close());
-		c.About = Command(_ =>
-		{
-			if (OwnerWindow is { } owner)
-			{
-				Fire(new AboutWindow().ShowDialog(owner));
-			}
-			else
-			{
-				Logger.Info("About cannot be shown in this head yet");
-			}
-		});
-		c.Manual = Command(_ => ShowManual());
+		c.About = Command(_ => Fire(AboutView.Show(this)));
+		c.Manual = Command(_ => ManualView.Show(this));
 		// the settings menus, bound in the markup as the WPF head's are: each entry's command carries its value, the check
 		// marks follow the settings and the controllers through bindings (2026-11-11; the port had filled these menus in
 		// code and set their check marks by hand)
@@ -232,17 +221,6 @@ public partial class MainView
 		{
 			RunHost.Stop();
 		}
-	}
-
-	private void ShowManual()
-	{
-		if (OwnerWindow is not { } owner)
-		{
-			Logger.Info("The manual cannot be shown in this head yet");
-			return;
-		}
-		_manual = ManualWindow.ShowOrActivate(owner);
-		_manual.Closed += (_, _) => _manual = null;
 	}
 
 	/// <summary>An export failed: the text of the key, with the error's words under it when there is one.</summary>

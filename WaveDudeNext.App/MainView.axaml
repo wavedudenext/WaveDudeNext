@@ -22,6 +22,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="using:WaveDudeNext.App.Controls"
         xmlns:converters="using:WaveDudeNext.App.Converters"
+        xmlns:dialogs="using:WaveDudeNext.App.Dialogs"
         xmlns:docking="using:WaveDudeNext.App.Docking"
         xmlns:layout="using:WaveDudeNext.UI.Docking"
         xmlns:localization="using:WaveDudeNext.App.Localization"
@@ -164,7 +165,12 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 			<Setter Property="controls:MenuIcon.Drawing" Value="Pause" />
 		</Style>
 	</UserControl.Styles>
-	<DockPanel>
+	<!-- the content, and over it the layer the dialogs are shown in where there are no windows (the browser head; a
+	     desktop shows each in a window of its own): empty and out of the pointer's way until a dialog is asked for,
+	     and while one is open the content is disabled, so no key, access key or pointer reaches the application under
+	     the dialog (2026-11-15) -->
+	<Panel>
+	<DockPanel IsEnabled="{Binding !#dialogOverlay.IsOpen}">
 		<Menu x:Name="menu" DockPanel.Dock="Top" Background="{DynamicResource MenuBackground}" Foreground="{DynamicResource MenuForeground}">
 			<MenuItem Header="{DynamicResource MenuFile}">
 				<MenuItem Header="{DynamicResource MenuFileNew}" controls:MenuIcon.Drawing="New" Command="{Binding Commands.New}" HotKey="Ctrl+N" InputGesture="Ctrl+N" />
@@ -433,4 +439,6 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 			</docking:DockHost.DocumentContent>
 		</docking:DockHost>
 	</DockPanel>
+	<dialogs:DialogOverlay x:Name="dialogOverlay" />
+	</Panel>
 </UserControl>

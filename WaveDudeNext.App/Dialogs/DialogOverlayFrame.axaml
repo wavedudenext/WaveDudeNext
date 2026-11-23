@@ -1,0 +1,64 @@
+<!--
+SPDX-License-Identifier: GPL-3.0-or-later
+Copyright (C) 2026 Alexander Graef <alex@graef.cc>
+
+This file is part of WaveDude Next, a 2D wave simulator.
+
+Based on the work of
+  Jeroen Vleggaar (Huygens Optics), author of Wave Dude 2D, Copyright (C) 2026
+    <https://www.youtube.com/@HuygensOptics>, <https://www.huygensoptics.com>
+  0x23 (Diffraction Limited), author of WaveSimulator2D
+    <https://www.youtube.com/@DiffractionLimited>, <https://github.com/0x23/WaveSimulator2D>
+  Mark <mark@pab-ai.com>, co-author of the AvaloniaUI port
+
+WaveDude Next is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
+<https://www.gnu.org/licenses/>.
+-->
+
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dialogs="using:WaveDudeNext.App.Dialogs"
+             x:Class="WaveDudeNext.App.Dialogs.DialogOverlayFrame"
+             x:Name="root"
+             Focusable="True" FocusAdorner="{x:Null}">
+	<!-- One dialog over the main view, where there are no windows (the browser head): a veil over everything under it,
+	     which dims the application and takes the pointer, and in its middle the frame, what a window is around the
+	     same view on a desktop: a 1 px accent outline, a title strip in the colours of an active pane's title bar with
+	     the view's title (DialogFrame.Title) and a close button, and the view at the size it names (DialogFrame.Width
+	     and Height, NaN for its own). The frame is never larger than the page leaves (the code-behind's limits): a
+	     view with a height of its own shrinks with the page, one as high as its content scrolls in the frame where the
+	     page is lower. Tab cycles inside the frame. The view keeps the text lines a window gives it: the main view's
+	     15 px line is not inherited here. The frame itself can take the focus, for a view that has nothing to start
+	     on. -->
+	<Panel>
+		<Border Background="#99000000" />
+		<Border HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24"
+		        Background="{DynamicResource WindowBackground}" BorderBrush="{DynamicResource Accent}" BorderThickness="1"
+		        BoxShadow="0 8 32 0 #99000000"
+		        KeyboardNavigation.TabNavigation="Cycle" TextBlock.LineHeight="NaN">
+			<DockPanel>
+				<Border DockPanel.Dock="Top" Height="28" Background="{DynamicResource TitleBarActiveBackground}">
+					<DockPanel Margin="8,0,6,0">
+						<Button x:Name="closeButton" DockPanel.Dock="Right" VerticalAlignment="Center"
+						        Theme="{StaticResource DockHeaderButtonTheme}" Content="{StaticResource CloseGeometry}"
+						        ToolTip.Tip="{DynamicResource DockClose}"
+						        AutomationProperties.Name="{DynamicResource DockClose}" AutomationProperties.AutomationId="DialogClose"
+						        Foreground="{DynamicResource TitleBarActiveForeground}"
+						        Background="{DynamicResource TitleBarButtonHoverActive}" />
+						<TextBlock Text="{Binding #root.View.(dialogs:DialogFrame.Title)}" VerticalAlignment="Center"
+						           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TitleBarActiveForeground}"
+						           AutomationProperties.AutomationId="DialogTitle" />
+					</DockPanel>
+				</Border>
+				<ScrollViewer x:Name="scroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+					<ContentControl x:Name="host" Content="{Binding #root.View}"
+					                Width="{Binding #root.View.(dialogs:DialogFrame.Width)}"
+					                Height="{Binding #root.View.(dialogs:DialogFrame.Height)}" />
+				</ScrollViewer>
+			</DockPanel>
+		</Border>
+	</Panel>
+</UserControl>
