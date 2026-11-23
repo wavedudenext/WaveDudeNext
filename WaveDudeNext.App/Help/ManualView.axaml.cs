@@ -30,7 +30,7 @@ using WaveDudeNext.App.Dialogs;
 namespace WaveDudeNext.App.Help;
 
 /// <summary>
-/// The manual (Help > Manual, F1): the embedded MANUAL.md rendered by <see cref="MarkdownDocument"/> beside a
+/// The manual (Help > Manual, F1): MANUAL.md as the build converts it (<see cref="HelpDocument"/>) beside a
 /// contents tree of its chapters and their sections, every branch open; the title, the one level-1 heading, is no row.
 /// It opens with the text at its top and the first chapter's row taken; taking a row goes to its heading, which then
 /// stands at the top of the text; a link to "#anchor" goes to that heading, a web link opens in the browser. The
@@ -43,19 +43,18 @@ namespace WaveDudeNext.App.Help;
 public partial class ManualView : UserControl, IDialogView
 {
 	private static readonly Logger Logger = LogManager.GetLogger(typeof(ManualView).FullName!);
-	private readonly MarkdownDocument _document;
+	private readonly HelpDocument _document;
 	private readonly long _start;
-	private readonly double _rendered;
+	private readonly double _read;
 	/// <summary>Set while the first row is taken on opening, so the text stays at its top instead of going to the heading.</summary>
 	private bool _opening;
 
-	/// <summary>Renders the manual and its headings; the dialog opens with the text at its top and the first row taken, the tree focused.</summary>
+	/// <summary>Loads the manual and lists its headings; the dialog opens with the text at its top and the first row taken, the tree focused.</summary>
 	public ManualView()
 	{
 		_start = Stopwatch.GetTimestamp();
-		string markdown = MarkdownDocument.ReadEmbedded("MANUAL.md") ?? "MANUAL.md is not embedded in this build.";
-		_document = MarkdownDocument.Render(markdown, new MarkdownRenderOptions { TightLists = true, Name = "MANUAL.md" });
-		_rendered = Stopwatch.GetElapsedTime(_start).TotalMilliseconds;
+		_document = HelpDocument.Load(HelpDocument.Manual);
+		_read = Stopwatch.GetElapsedTime(_start).TotalMilliseconds;
 		_document.LinkActivated += OnLink;
 		IReadOnlyList<ManualHeading> all = _document.Contents();
 		// the chapters are the rows: the title, the document's one level-1 heading, would be a lone root that indents
@@ -72,8 +71,8 @@ public partial class ManualView : UserControl, IDialogView
 	/// <summary>The contents tree's rows: the manual's chapters, each with its sections under it.</summary>
 	public IReadOnlyList<ManualHeading> Headings { get; }
 
-	/// <summary>The rendered manual, for the tests and the view's own navigation.</summary>
-	public MarkdownDocument Document => _document;
+	/// <summary>The manual's document, for the tests and the view's own navigation.</summary>
+	public HelpDocument Document => _document;
 
 	/// <inheritdoc />
 	public event EventHandler? CloseRequested;
@@ -103,8 +102,8 @@ public partial class ManualView : UserControl, IDialogView
 	public void Opened()
 	{
 		Dispatcher.UIThread.Post(TakeFirstRow, DispatcherPriority.Loaded);
-		Logger.Debug("Manual open: {Headings} headings, {Figures} figures, rendered in {Rendered:0} ms, on screen after {Shown:0} ms",
-			_document.Headings.Count, _document.FigureCount, _rendered, Stopwatch.GetElapsedTime(_start).TotalMilliseconds);
+		Logger.Debug("Manual open: {Headings} headings, {Figures} figures, the document read in {Read:0} ms, on screen after {Shown:0} ms",
+			_document.Headings.Count, _document.FigureCount, _read, Stopwatch.GetElapsedTime(_start).TotalMilliseconds);
 	}
 
 	/// <summary>Esc closes even while the text has the focus.</summary>
@@ -205,7 +204,7 @@ public partial class ManualView : UserControl, IDialogView
 	}
 
 	/// <summary>A link: "#anchor" goes to that heading, anything else opens in the browser.</summary>
-	private void OnLink(object? sender, MarkdownLinkEventArgs e)
+	private void OnLink(object? sender, DocumentLinkEventArgs e)
 	{
 		if (e.Target.StartsWith('#'))
 		{

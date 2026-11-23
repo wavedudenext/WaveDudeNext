@@ -1,0 +1,87 @@
+<!--
+SPDX-License-Identifier: GPL-3.0-or-later
+Copyright (C) 2026 Alexander Graef <alex@graef.cc>
+
+This file is part of WaveDude Next, a 2D wave simulator.
+
+Based on the work of
+  Jeroen Vleggaar (Huygens Optics), author of Wave Dude 2D, Copyright (C) 2026
+    <https://www.youtube.com/@HuygensOptics>, <https://www.huygensoptics.com>
+  0x23 (Diffraction Limited), author of WaveSimulator2D
+    <https://www.youtube.com/@DiffractionLimited>, <https://github.com/0x23/WaveSimulator2D>
+  Mark <mark@pab-ai.com>, co-author of the AvaloniaUI port
+
+WaveDude Next is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
+<https://www.gnu.org/licenses/>.
+-->
+
+<!-- Build action: the two Markdown documents become Avalonia controls, written down at build and built into the app
+     (2026-11-23, the user's choice: converted at build as the WPF head's are; until then this head parsed the Markdown
+     and the figures' SVGs, 4.4 MB of them, each time a document was opened). MANUAL.md becomes
+     obj/<Configuration>/<Framework>/Documents/Help/Manual.xml, the resource avares://WaveDudeNext.App/Help/Manual.xml,
+     its headings tagged for the contents tree, its tight lists without paragraph spacing, its figures' pictures written
+     to Documents/Manual/ and built in as resources (avares://WaveDudeNext.App/Manual/...); LICENSE.md becomes
+     Help/License.xml. The files hold Avalonia's XAML and are resources, read by Help/HelpDocument, which makes the
+     controls they name. They are not given to Avalonia's XAML compiler (hence .xml: it compiles every .axaml), which
+     turns a document into one method, 745 KB of code for the manual, that the desktop head's first opening of the
+     manual spent 0.9 s compiling.
+     The converter is the WPF head's, WaveDudeNext.WPF/Build/MarkdownToFlowDocument.cs, an inline C# task
+     (RoslynCodeTaskFactory, part of MSBuild), asked for its Avalonia dialect; what Markdown and SVG it knows is in its
+     summary, and an SVG element it does not draw stops the build. Each document is converted again only when its
+     Markdown, the figures (the Assets folder), the converter or this file is newer than the output. -->
+<Project>
+
+  <UsingTask TaskName="MarkdownToFlowDocument" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Source ParameterType="System.String" Required="true" />
+      <Destination ParameterType="System.String" Required="true" />
+      <FigureFolder ParameterType="System.String" />
+      <FigureUri ParameterType="System.String" />
+      <TagHeadings ParameterType="System.Boolean" />
+      <TightLists ParameterType="System.Boolean" />
+      <Dialect ParameterType="System.String" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Language="cs" Source="$(MSBuildThisFileDirectory)..\..\WaveDudeNext.WPF\Build\MarkdownToFlowDocument.cs" />
+    </Task>
+  </UsingTask>
+
+  <PropertyGroup>
+    <LicenseMarkdown>$(MSBuildThisFileDirectory)..\..\LICENSE.md</LicenseMarkdown>
+    <ManualMarkdown>$(MSBuildThisFileDirectory)..\..\MANUAL.md</ManualMarkdown>
+    <MarkdownConverter>$(MSBuildThisFileDirectory)..\..\WaveDudeNext.WPF\Build\MarkdownToFlowDocument.cs</MarkdownConverter>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- what the manual's figures may come from; a change converts the document again -->
+    <ManualAsset Include="$(MSBuildThisFileDirectory)..\..\Assets\**\*" />
+  </ItemGroup>
+
+  <!-- the conversions. The output folder is named in the targets, not in a property of this file: a property here is
+       evaluated when the project imports the file, before the SDK has set IntermediateOutputPath -->
+  <Target Name="GenerateLicenseDocument" Inputs="$(LicenseMarkdown);$(MarkdownConverter);$(MSBuildThisFileFullPath)" Outputs="$(IntermediateOutputPath)Documents\Help\License.xml">
+    <MarkdownToFlowDocument Source="$(LicenseMarkdown)" Destination="$(IntermediateOutputPath)Documents\Help\License.xml" Dialect="Avalonia" />
+  </Target>
+
+  <Target Name="GenerateManualDocument" Inputs="$(ManualMarkdown);@(ManualAsset);$(MarkdownConverter);$(MSBuildThisFileFullPath)" Outputs="$(IntermediateOutputPath)Documents\Help\Manual.xml">
+    <MarkdownToFlowDocument Source="$(ManualMarkdown)" Destination="$(IntermediateOutputPath)Documents\Help\Manual.xml" FigureFolder="$(IntermediateOutputPath)Documents\Manual"
+                            FigureUri="avares://$(AssemblyName)/Manual/" TagHeadings="true" TightLists="true" Dialect="Avalonia" />
+  </Target>
+
+  <!-- the documents and the pictures as resources of this project, each under the folder its Link names; a target of
+       its own, so the items are added even when a conversion was skipped as up to date, and before Avalonia's resource
+       gathering, whose first step runs before ResolveReferences -->
+  <Target Name="IncludeDocuments" BeforeTargets="BeforeBuild;AddAvaloniaResources;_GenerateAvaloniaResourcesDependencyCache;_InjectAvaloniaAdditionalFiles" DependsOnTargets="GenerateLicenseDocument;GenerateManualDocument">
+    <ItemGroup>
+      <_Document Include="$(IntermediateOutputPath)Documents\Help\*.xml" />
+      <AvaloniaResource Include="@(_Document)" Link="Help\%(Filename)%(Extension)" />
+      <_DocumentFigure Include="$(IntermediateOutputPath)Documents\Manual\*" />
+      <AvaloniaResource Include="@(_DocumentFigure)" Link="Manual\%(Filename)%(Extension)" />
+      <FileWrites Include="@(_Document);@(_DocumentFigure)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

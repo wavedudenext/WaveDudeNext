@@ -181,7 +181,8 @@ harnesses run.
   the FSF's GPL-3.0 Markdown verbatim, nothing else (GitHub's detector rejects additions); the About dialog shows
   it as a document built by `Build/Documents.targets`, whose converter `Build/MarkdownToFlowDocument.cs` (an inline
   MSBuild task, C# 7.3 and netstandard2.0 for Visual Studio's MSBuild; excluded from the app's compile) makes MANUAL.md
-  the manual's document too.
+  the manual's document too, and since 2026-11-23 the Avalonia head's two documents (its `Dialect="Avalonia"`, see
+  Port, "The manual and the license are converted at build in the Avalonia head too").
 - **The Avalonia head has the same two profiles** (2026-11-11, the user's request, the first step towards the release
   files he wants, six and no more: 2× WPF, 2× Avalonia for Windows, 1× Linux x64, 1× macOS universal; the Linux format
   and the Mac's signing are open): `dotnet publish WaveDudeNext.App/WaveDudeNext.App.csproj -p:PublishProfile=SingleFile`
@@ -3118,6 +3119,80 @@ settings with a light desktop and a French browser; Dark set on a light desktop 
 browser, which gets English. **The start itself is as
 long as it was** (2.8 s after the files in the compiled build, of which the application's set-up is 1.2 s);
 shortening it was not asked for and would begin with a profile of that set-up.
+**The manual and the license are converted at build in the Avalonia head too** (2026-11-23, the user's report that
+the Debug browser build does not open the manual within 30 seconds, his question how that head makes it, and his
+choice once he knew: "the layout can be fully pre-built, from MD to whatever is required for that particular head",
+"that should have been a basic thing right from the get-go"). Until then `Help/MarkdownDocument` and `Help/SvgFigure`
+of Mark's port, 2,289 lines and a port of the build converter's own parser, read MANUAL.md (843 lines, 90 KB) and
+the 51 figures' SVGs (4.4 MB, embedded resources) at every opening. Now the WPF head's converter,
+`WaveDudeNext.WPF/Build/MarkdownToFlowDocument.cs`, has a second output (`Dialect="Avalonia"`): the same document
+as Avalonia's XAML, block for block the controls the port's renderer had made (a `SelectableTextBlock` with inlines
+for a heading or a paragraph, a `Grid` row of a marker and the item's blocks for a list item, `Border`s of the style
+classes "quote" and "rule", a link as an `InlineUIContainer` holding a `Button` of the class "link" with the target
+in its Tag, a figure as a `Viewbox` over a canvas with the picture and the badges' Borders), every text as a `Run`
+with the text in an attribute, a paragraph's plain text up to the next inline of another kind as one Run (the
+renderer had made one for each source line). `WaveDudeNext.App/Build/Documents.targets` runs it for both documents
+into `obj/.../Documents/Help/Manual.xml` and `License.xml` and writes the pictures to `Documents/Manual/` (the WPF
+head's 51 files byte for byte), all of them `AvaloniaResource`s, and **`Help/HelpDocument` reads the file as data**
+(an `XmlReader`, 15 kinds of element and their attributes, anything else an error naming it, so converter and reader
+are changed together), lists the headings by their tags (`h{level}#{anchor}`, as the WPF paragraph's) and hears the
+links' clicks at the root. The two renderer files and the three kinds of embedded resource are gone.
+**Not compiled by Avalonia's XAML compiler, which was built first and measured**: it turns a document into one
+method, 745 KB of IL for the manual, which the desktop head's JIT took 0.92 s for at the first opening
+(`System.Runtime.JitInfo` around the load: 1159 ms of which 923 the JIT, later loads 262 ms; the old renderer's
+first opening had read in 521 ms), and which the interpreter of a Debug browser build has to prepare (4.1 to 4.7 s
+against 3.2 s as data). As data the first load is 325 ms on the desktop (111 ms of JIT for 190 small methods), as WPF
+reads its BAML. The files are `.xml` because Avalonia compiles every `.axaml` and `.xaml` among the resources.
+**Measured** (the view's own line, "the document read in" and "on screen after"; before and after): the Debug
+browser build 8.9 to 9.2 s and 61 s, now 3.2 s and 55 s; the compiled one 0.65 to 0.78 s and 2.8 to 3.2 s, now 0.56
+to 0.68 s and 2.7 to 3.2 s, so nothing there; the desktop head's first opening 0.52 s and 1.45 s (his log of
+2026-11-15), now 0.32 s and 1.21 s, a second opening 0.19 s and 0.85 s. The download is 0.1 MB smaller (the App's
+assembly 3.65 → 3.54 MB as gzip, the compiled program 45.16 → 44.97 MB). **What remains is the layout, said to him
+before he chose**: linear in the text (in Debug the first 80 lines 5.1 s, 240 lines 15.3 s, all 843 lines 52 s; 2.2
+s compiled, 0.9 s on the desktop), since Avalonia builds every text block's `TextLayout` twice at a first layout, in
+measure and again, unconditionally, in arrange, and calls `Render` for every block wherever it lies
+(`TextBlock.ArrangeOverride` and `CompositingRenderer.UpdateCore`, read at 12.1.5), 91 MB of decoded pictures with
+it; ruled out by a run each, the whole-pixel shaper and a second pass for the scroll bar. **Whose layout it is**
+(the desktop head on a desktop of its own, the document laid out whole and with one kind of control taken out, a
+window each): whole 456 to 512 ms for 3839 visuals and 1826 text blocks; without the figures' 811 badges, a Border
+and a text block each, 386 ms; without the figures 370 ms; without the 433 list markers as well 385 ms, so the
+markers cost nothing measurable; the figures alone 87 ms. So the paragraphs and headings are three quarters to four
+fifths of the layout, the badges most of the rest. Of the 180 ms of reading there, 118 ms are the 51 pictures'
+decoding (90 MB of pixels). Put to him and not taken:
+the document shown section by section, the first at once and the rest when idle (B), or only the sections near the
+view existing (C, with estimated heights and links out of Tab's reach until built); also named, the framework's
+virtualising list, the browser's own HTML, a document control of our own. **Proven**: the manual captured at 90
+scroll positions 700 px apart (its whole 49,000 px) and the license in About at 71, in a headless Edge before and
+after: every capture pixel for pixel the same, in the Debug build and in the compiled one (the first screen at
+scroll position 0 alone differs, in 341 pixels of the scaled main window picture by one or two levels, as two
+sessions of the old code do); a link's click leads to its heading; the WPF head's `Manual.xaml`, `License.xaml` and
+pictures byte for byte what they were before the converter's change; the desktop head on a desktop of its own: 53
+headings, 51 figures, a link's click moved the text, exit 0, the foreground window his. Not run: `AboutCheck`,
+which reads the license through UI Automation (the text blocks are the same controls), and Linux or macOS.
+**Harness notes**: `Compare` is PowerShell's alias of `Compare-Object` and wins over a function of that name, as
+`Type` does; the JIT's share of a step inside the app is `JitInfo.GetCompilationTime(currentThread: true)` with
+`GetCompiledMethodCount` and `GetCompiledILBytes` before and after it; the hidden desktop's launcher keeps the two
+file types' registry values and the settings file and puts them back, since the head's start takes both.
+**A figure's badges are one control** (2026-11-23, the user's choice of the ways put to him to cut the manual's
+layout: "we don't need pixel-perfect, rather, currently the text is not really centered anyway. It just needs to look
+okay"). The 811 numbered badges had been a `Border` and a `TextBlock` each, 1622 controls, every one made, measured,
+arranged and recorded for drawing by itself, its one or two digits laid out twice. Now the converter's Avalonia
+output gathers the badges that follow one another into one element, `help:FigureBadges` with a `help:Badge` line
+for each (centre, size, colours, font, number, tooltip; the root names the namespace
+`using:WaveDudeNext.App.Help`), and `Help/FigureBadges` draws them in its `Render`: a disc with its edge line inside
+the disc's width, and the number centred on it by its ink (`FormattedText.BuildGeometry`'s bounds), a number's text
+laid out once for the document (`BadgeInk`, which `HelpDocument` hands every figure). The tooltip is the control's
+own, set in `OnPointerMoved` to the text of the badge under the pointer and cleared between them; the control is
+hit only where a disc is drawn. The WPF output is byte for byte what it was. The document is 2268 visuals and 1015
+text blocks where it was 3839 and 1826, and as high to the pixel (50,479 px on the desktop). Seen: the first
+figure's badges enlarged, in the browser head (Roboto) and the desktop head (Segoe UI), the numbers in the discs'
+middle; the tooltips of two badges with the pointer moved onto them as a hand does (a single jump onto a badge sets
+the tip but shows it only at the next move, the tooltip service having looked before the tip was there), none
+beside them. UI Automation no longer sees a badge's number as an element of its own. **Measured, the manual on
+screen** (before and with the badges as one control): the Debug browser build 54 to 58 s, now 50.1 s (the document
+read in 2.3 s where it was 3.2); the compiled one 3.2 s at a first opening and 2.75 s at a second, now 3.0 s and
+2.4 to 2.6 s; the desktop head 1.21 s and 0.85 s, now 1.06 s and 0.74 s. Less than the share measured on the
+desktop had promised for the compiled build (0.2 to 0.3 s where a sixth to a fifth of 2.2 s was reckoned).
 **The harnesses against the Avalonia head** (the same night, on his word): ten of twelve passed outright
 (`PreviewCheck` 43, `LanguageCheck`, `ProbeGraphCheck` 39, `ImportCheck` 10, `ExportCheck` 45,
 `PreviewQualityCheck`, `SceneImageCheck` 9, `ColorPickerCheck` 13, `AboutCheck` 18, `SelectionCheck` 10).

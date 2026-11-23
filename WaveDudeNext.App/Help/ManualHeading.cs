@@ -21,8 +21,8 @@ using Avalonia.Controls;
 namespace WaveDudeNext.App.Help;
 
 /// <summary>
-/// A heading of a rendered Markdown document (<see cref="MarkdownDocument"/>): a row of the manual window's contents
-/// tree, with the headings under it. UI thread (it holds the heading's control).
+/// A heading of a document converted from Markdown (<see cref="HelpDocument"/>): a row of the manual window's
+/// contents tree, with the headings under it. UI thread (it holds the heading's control).
 /// </summary>
 /// <param name="text">The heading's text.</param>
 /// <param name="level">1 to 6, the Markdown heading's level.</param>

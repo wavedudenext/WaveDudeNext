@@ -94,14 +94,6 @@ public static class AboutInfo
 	}
 
 	/// <summary>
-	/// LICENSE.md as Markdown, embedded by the project file under that name and rendered by
-	/// <see cref="MarkdownDocument"/> in the About window; a build without the resource gets one paragraph pointing at
-	/// gnu.org.
-	/// </summary>
-	public static string LicenseMarkdown() =>
-		MarkdownDocument.ReadEmbedded("LICENSE.md") ?? "LICENSE.md is not embedded in this build. See " + Gpl;
-
-	/// <summary>
 	/// The system facts as "label: value" lines, the labels looked up through <paramref name="label"/> (a string table
 	/// key to its text). <paramref name="gpuSetting"/> is the application's GPU switch. The OpenCL devices are enumerated
 	/// here; a missing OpenCL is reported as a line, never thrown. The eight lines: program, runtime, operating system,

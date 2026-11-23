@@ -32,7 +32,9 @@ using Microsoft.Build.Utilities;
 /// The build's Markdown converter: a Markdown file becomes a WPF FlowDocument in XAML, which the app loads with
 /// XamlReader. An MSBuild task, compiled from this file by RoslynCodeTaskFactory (<c>Documents.targets</c>) and never
 /// part of the app, so the app carries no Markdown code and the build needs no package; kept to netstandard2.0 and
-/// C# 7.3, which Visual Studio's MSBuild compiles it with on .NET Framework, as the SDK's does on .NET.
+/// C# 7.3, which Visual Studio's MSBuild compiles it with on .NET Framework, as the SDK's does on .NET. For the
+/// Avalonia head it writes the same document as Avalonia controls (<see cref="Dialect"/>), which that head's build
+/// makes a resource (<c>WaveDudeNext.App/Build/Documents.targets</c>) and the head reads (<c>Help/HelpDocument</c>).
 /// </summary>
 /// <remarks>
 /// The CommonMark it knows: ATX and setext headings; paragraphs, a line break inside one a space, two trailing spaces
@@ -79,6 +81,21 @@ public class MarkdownToFlowDocument : Task
 	/// </summary>
 	public bool TightLists { get; set; }
 
+	/// <summary>
+	/// What the XAML is written for: "FlowDocument" (the default), a WPF FlowDocument; or "Avalonia" (2026-11-23, the
+	/// user's choice: the Avalonia head's documents are converted at build as the WPF head's are, where that head had
+	/// parsed the Markdown and the figures' SVGs at every opening), the same document as a panel of Avalonia controls,
+	/// Avalonia having no flow document: a StackPanel with a page padding of 10 px holding a selectable text block for
+	/// each heading and paragraph, a row of a marker and the item's blocks for each list item, a quote's blocks behind
+	/// the bar of the style class "quote", a rule as a Border of the class "rule", a link as a Button of the class
+	/// "link" with the target in its Tag, and the figures as in WPF but for their badges, which are one element of the
+	/// head's own for each run of them (<c>help:FigureBadges</c>). The classes are the Avalonia head's styles; with
+	/// <see cref="TagHeadings"/> a heading's text block carries the tag the WPF paragraph does. The output is
+	/// Avalonia's XAML, but the head reads it itself (<c>Help/HelpDocument</c>): an element or attribute written here
+	/// that the reader there does not know is an error at the document's opening, so the two are changed together.
+	/// </summary>
+	public string Dialect { get; set; }
+
 	private const string SvgNamespace = "http://www.w3.org/2000/svg";
 	private const string XLinkNamespace = "http://www.w3.org/1999/xlink";
 	/// <summary>Half the width of the box a figure's text is centred in, in pixels: WPF's Canvas places a box, not a text anchor.</summary>
@@ -104,7 +121,12 @@ public class MarkdownToFlowDocument : Task
 		{ "raquo", "»" }, { "bull", "•" }, { "micro", "µ" }, { "lambda", "λ" }, { "radic", "√" },
 	};
 
+	/// <summary>The font of code in the Avalonia head: Consolas where it exists (Windows), else a common monospace, else the platform's.</summary>
+	private const string AvaloniaCodeFont = "Consolas, Cascadia Mono, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, monospace";
+
 	private string _folder;
+	/// <summary>Whether the document is written as Avalonia controls (<see cref="Dialect"/>).</summary>
+	private bool _avalonia;
 	private readonly HashSet<string> _anchors = new HashSet<string>(StringComparer.Ordinal);
 	private readonly HashSet<string> _figureFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 	private readonly Dictionary<string, string> _figureNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -115,6 +137,12 @@ public class MarkdownToFlowDocument : Task
 	{
 		try
 		{
+			_avalonia = string.Equals(Dialect, "Avalonia", StringComparison.OrdinalIgnoreCase);
+			if (!_avalonia && !string.IsNullOrEmpty(Dialect) && !string.Equals(Dialect, "FlowDocument", StringComparison.OrdinalIgnoreCase))
+			{
+				Log.LogError("{0}", "The Dialect \"" + Dialect + "\" is neither FlowDocument nor Avalonia");
+				return false;
+			}
 			_folder = Path.GetDirectoryName(Path.GetFullPath(Source));
 			string[] text = File.ReadAllLines(Source);
 			var lines = new List<SourceLine>(text.Length);
@@ -125,9 +153,19 @@ public class MarkdownToFlowDocument : Task
 			List<Block> blocks = ParseBlocks(lines);
 			Prepare(blocks);
 			var sb = new StringBuilder();
-			sb.AppendLine("<FlowDocument xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" FontFamily=\"Segoe UI\" FontSize=\"12\" PagePadding=\"10\" TextAlignment=\"Left\" IsHyphenationEnabled=\"False\">");
-			RenderBlocks(blocks, sb, 0, false);
-			sb.AppendLine("</FlowDocument>");
+			if (_avalonia)
+			{
+				// the second namespace is the Avalonia head's, for the one element of its own (a figure's badges)
+				sb.AppendLine("<StackPanel xmlns=\"https://github.com/avaloniaui\" xmlns:help=\"using:WaveDudeNext.App.Help\" Margin=\"10\">");
+				AvaloniaBlocks(blocks, sb, 0, false);
+				sb.AppendLine("</StackPanel>");
+			}
+			else
+			{
+				sb.AppendLine("<FlowDocument xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" FontFamily=\"Segoe UI\" FontSize=\"12\" PagePadding=\"10\" TextAlignment=\"Left\" IsHyphenationEnabled=\"False\">");
+				RenderBlocks(blocks, sb, 0, false);
+				sb.AppendLine("</FlowDocument>");
+			}
 			if (Log.HasLoggedErrors)
 			{
 				return false;
@@ -738,21 +776,10 @@ public class MarkdownToFlowDocument : Task
 	private void RenderLink(Node link, StringBuilder sb, int line, bool inLink)
 	{
 		string target = link.Text;
-		bool anchor = target.StartsWith("#", StringComparison.Ordinal);
-		Uri uri;
-		bool web = Uri.TryCreate(target, UriKind.Absolute, out uri) && (uri.Scheme == "http" || uri.Scheme == "https" || uri.Scheme == "mailto");
-		if (inLink || !(anchor || web))
+		if (!Follows(link, line, inLink))
 		{
-			if (!inLink)
-			{
-				Log.LogMessage(MessageImportance.Normal, "{0}", Source + "(" + line + "): the link to " + target + " shows as its text, the app has nothing to open there");
-			}
 			RenderInlines(link, sb, line, true);
 			return;
-		}
-		if (anchor && !_anchors.Contains(target.Substring(1)))
-		{
-			Warning(line, "the link " + target + " names no heading of the document");
 		}
 		sb.Append("<Hyperlink NavigateUri=\"").Append(Escape(target)).Append('"');
 		if (link.Title != null)
@@ -762,6 +789,198 @@ public class MarkdownToFlowDocument : Task
 		sb.Append('>');
 		RenderInlines(link, sb, line, true);
 		sb.Append("</Hyperlink>");
+	}
+
+	// whether a link is one the app follows, to a heading ("#anchor") or to the web: one to a file shows as its text
+	// (said in the build's log), as does a link inside a link; a "#anchor" that no heading has is a warning
+	private bool Follows(Node link, int line, bool inLink)
+	{
+		string target = link.Text;
+		bool anchor = target.StartsWith("#", StringComparison.Ordinal);
+		Uri uri;
+		bool web = Uri.TryCreate(target, UriKind.Absolute, out uri) && (uri.Scheme == "http" || uri.Scheme == "https" || uri.Scheme == "mailto");
+		if (inLink || !(anchor || web))
+		{
+			if (!inLink)
+			{
+				Log.LogMessage(MessageImportance.Normal, "{0}", Source + "(" + line + "): the link to " + target + " shows as its text, the app has nothing to open there");
+			}
+			return false;
+		}
+		if (anchor && !_anchors.Contains(target.Substring(1)))
+		{
+			Warning(line, "the link " + target + " names no heading of the document");
+		}
+		return true;
+	}
+
+	// ------------------------------------------------------------------ rendering for Avalonia
+
+	// The document as Avalonia controls (see Dialect), block for block what RenderBlocks writes as a flow document:
+	// the same font sizes, weights and margins. Text is written as Run elements with the text in an attribute, never
+	// as element content, where XAML would trim and collapse its spaces; and a text block's inlines stand without a
+	// character between them, white space between two inlines being text to Avalonia's XAML compiler.
+	private void AvaloniaBlocks(List<Block> blocks, StringBuilder sb, int depth, bool tight)
+	{
+		foreach (Block block in blocks)
+		{
+			switch (block.Kind)
+			{
+				case BlockKind.Heading:
+					string style = block.Level == 1 ? "FontSize=\"18\" Margin=\"0,6,0,10\""
+						: block.Level == 2 ? "FontSize=\"15\" Margin=\"0,14,0,8\""
+						: "FontSize=\"13\" Margin=\"0,10,0,6\"";
+					string tag = TagHeadings ? " Tag=\"h" + block.Level.ToString(CultureInfo.InvariantCulture) + "#" + Escape(block.Anchor) + "\"" : "";
+					sb.AppendLine("<SelectableTextBlock TextWrapping=\"Wrap\" FontWeight=\"SemiBold\" " + style + tag + ">" + AvaloniaInlines(block) + "</SelectableTextBlock>");
+					break;
+				case BlockKind.Paragraph:
+					Node image = Figure(block.Inlines);
+					if (image != null)
+					{
+						RenderFigure(image, block.Line, sb);
+					}
+					else
+					{
+						sb.AppendLine(AvaloniaParagraph(block, tight));
+					}
+					break;
+				case BlockKind.Code:
+					// the line breaks as character references: a line break inside an attribute is read as a space
+					sb.AppendLine("<SelectableTextBlock FontFamily=\"" + AvaloniaCodeFont + "\" FontSize=\"11\" Margin=\"16,0,0,10\" TextWrapping=\"Wrap\" Text=\""
+						+ Value(string.Join("\n", block.Lines)).Replace("\n", "&#10;") + "\" />");
+					break;
+				case BlockKind.Rule:
+					sb.AppendLine("<Border Classes=\"rule\" />");
+					break;
+				case BlockKind.List:
+					AvaloniaList(block, sb, depth);
+					break;
+				case BlockKind.Quote:
+					sb.AppendLine("<Border Classes=\"quote\"><StackPanel>");
+					AvaloniaBlocks(block.Children, sb, depth, false);
+					sb.AppendLine("</StackPanel></Border>");
+					break;
+			}
+		}
+	}
+
+	private string AvaloniaParagraph(Block block, bool tight) =>
+		"<SelectableTextBlock TextWrapping=\"Wrap\" Margin=\"" + (tight ? "0" : "0,0,0,10") + "\">" + AvaloniaInlines(block) + "</SelectableTextBlock>";
+
+	// a list: a row for each item, the marker in a gutter of 20 px (bullets) or 28 px (numbers), the item's blocks
+	// beside it; Avalonia has no list block, so the numbers are written out
+	private void AvaloniaList(Block list, StringBuilder sb, int depth)
+	{
+		sb.AppendLine("<StackPanel Margin=\"" + (depth == 0 ? "0,0,0,10" : "0,4,0,0") + "\">");
+		bool tight = list.Tight && TightLists;
+		string bullet = depth == 0 ? "•" : depth == 1 ? "◦" : "▪";
+		int number = list.Start;
+		foreach (List<Block> item in list.Items)
+		{
+			sb.AppendLine("<Grid ColumnDefinitions=\"Auto,*\" Margin=\"0,0,0,4\">");
+			sb.AppendLine("<TextBlock Text=\"" + (list.Ordered ? number.ToString(CultureInfo.InvariantCulture) + "." : bullet) + "\" Width=\"" + (list.Ordered ? "28" : "20")
+				+ "\" Padding=\"0,0,6,0\" TextAlignment=\"Right\" VerticalAlignment=\"Top\" />");
+			sb.AppendLine("<StackPanel Grid.Column=\"1\">");
+			if (item.Count == 1 && item[0].Kind == BlockKind.Paragraph && Figure(item[0].Inlines) == null)
+			{
+				sb.AppendLine(AvaloniaParagraph(item[0], tight));
+			}
+			else
+			{
+				AvaloniaBlocks(item, sb, depth + 1, tight);
+			}
+			sb.AppendLine("</StackPanel>");
+			sb.AppendLine("</Grid>");
+			number++;
+		}
+		sb.AppendLine("</StackPanel>");
+	}
+
+	private string AvaloniaInlines(Block block)
+	{
+		var sb = new StringBuilder();
+		AvaloniaInlines(block.Inlines, sb, block.Line, false);
+		return sb.ToString();
+	}
+
+	// plain text up to the next inline of another kind is one Run, a line break inside a paragraph a space in it: a
+	// paragraph written over several lines is one run of text for Avalonia to shape, not one for each line
+	private void AvaloniaInlines(Node parent, StringBuilder sb, int line, bool inLink)
+	{
+		var text = new StringBuilder();
+		for (Node n = parent.First; n != null; n = n.Next)
+		{
+			if (n.Kind == NodeKind.Text)
+			{
+				text.Append(n.Text);
+				continue;
+			}
+			if (n.Kind == NodeKind.SoftBreak)
+			{
+				text.Append(' ');
+				continue;
+			}
+			AvaloniaRun(text, sb);
+			switch (n.Kind)
+			{
+				case NodeKind.HardBreak:
+					sb.Append("<LineBreak />");
+					break;
+				case NodeKind.Code:
+					sb.Append("<Run FontFamily=\"" + AvaloniaCodeFont + "\" Text=\"").Append(Value(n.Text)).Append("\" />");
+					break;
+				case NodeKind.Emphasis:
+					sb.Append("<Italic>");
+					AvaloniaInlines(n, sb, line, inLink);
+					sb.Append("</Italic>");
+					break;
+				case NodeKind.Strong:
+					sb.Append("<Span FontWeight=\"SemiBold\">");
+					AvaloniaInlines(n, sb, line, inLink);
+					sb.Append("</Span>");
+					break;
+				case NodeKind.Link:
+					AvaloniaLink(n, sb, line, inLink);
+					break;
+				case NodeKind.Image:
+					Warning(line, "the image " + n.Text + " shares its paragraph with text; only an image alone in its paragraph is a figure, here its description shows");
+					sb.Append("<Italic>");
+					AvaloniaInlines(n, sb, line, true);
+					sb.Append("</Italic>");
+					break;
+			}
+		}
+		AvaloniaRun(text, sb);
+	}
+
+	// the text gathered so far as a Run, if there is any
+	private void AvaloniaRun(StringBuilder text, StringBuilder sb)
+	{
+		if (text.Length > 0)
+		{
+			sb.Append("<Run Text=\"").Append(Value(text.ToString())).Append("\" />");
+			text.Clear();
+		}
+	}
+
+	// a link the app follows is a button in the text, styled as a link by its class, so that Tab reaches it; its target
+	// is its Tag, which the app reads at a click. The button's bottom stands on the line's bottom: its text shares the
+	// line's font, so the baselines meet
+	private void AvaloniaLink(Node link, StringBuilder sb, int line, bool inLink)
+	{
+		if (!Follows(link, line, inLink))
+		{
+			AvaloniaInlines(link, sb, line, true);
+			return;
+		}
+		sb.Append("<InlineUIContainer BaselineAlignment=\"Bottom\"><Button Classes=\"link\" Tag=\"").Append(Value(link.Text)).Append('"');
+		if (link.Title != null)
+		{
+			sb.Append(" ToolTip.Tip=\"").Append(Value(link.Title)).Append('"');
+		}
+		sb.Append(" AutomationProperties.Name=\"").Append(Value(PlainText(link))).Append("\"><TextBlock TextWrapping=\"NoWrap\">");
+		AvaloniaInlines(link, sb, line, true);
+		sb.Append("</TextBlock></Button></InlineUIContainer>");
 	}
 
 	// the image when it stands alone in its paragraph, else null
@@ -792,6 +1011,19 @@ public class MarkdownToFlowDocument : Task
 			return;
 		}
 		_figures++;
+		if (_avalonia)
+		{
+			// a control among the blocks' controls, with the margin the flow document's container has
+			sb.Append("<Viewbox Stretch=\"Uniform\" StretchDirection=\"DownOnly\" HorizontalAlignment=\"Left\" Margin=\"0,4,0,12\" AutomationProperties.Name=\"").Append(Value(PlainText(image))).Append('"');
+			if (image.Title != null)
+			{
+				sb.Append(" ToolTip.Tip=\"").Append(Value(image.Title)).Append('"');
+			}
+			sb.AppendLine(">");
+			sb.Append(body);
+			sb.AppendLine("</Viewbox>");
+			return;
+		}
 		sb.AppendLine("<BlockUIContainer Margin=\"0,4,0,12\">");
 		sb.Append("<Viewbox Stretch=\"Uniform\" StretchDirection=\"DownOnly\" HorizontalAlignment=\"Left\" UseLayoutRounding=\"True\" AutomationProperties.Name=\"").Append(Escape(PlainText(image))).Append('"');
 		if (image.Title != null)
@@ -844,7 +1076,7 @@ public class MarkdownToFlowDocument : Task
 		if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".gif" || extension == ".bmp")
 		{
 			string file = WriteFigure(path, name, extension, File.ReadAllBytes(path));
-			return "<Image Stretch=\"None\" RenderOptions.BitmapScalingMode=\"HighQuality\" Source=\"" + Escape(FigureUri + file) + "\" />" + Environment.NewLine;
+			return "<Image Stretch=\"None\" " + ScalingAttribute + "=\"HighQuality\" Source=\"" + Escape(FigureUri + file) + "\" />" + Environment.NewLine;
 		}
 		Error(line, "the image " + path + " is neither an SVG nor a PNG, JPEG, GIF or BMP picture");
 		return null;
@@ -909,6 +1141,11 @@ public class MarkdownToFlowDocument : Task
 		/// <summary>Device-independent pixels per unit of the view box: 1, or a half for a figure at zoom 2.</summary>
 		private double _unit = 1;
 		private int _images;
+		/// <summary>
+		/// For Avalonia: the badges met since the last other element, each a line of its own, to be written as one
+		/// element (<see cref="FlushBadges"/>).
+		/// </summary>
+		private readonly StringBuilder _badges = new StringBuilder();
 
 		public SvgReader(MarkdownToFlowDocument task, string path, string name, int line)
 		{
@@ -997,12 +1234,15 @@ public class MarkdownToFlowDocument : Task
 						Group(e, style, sb);
 						break;
 					case "image":
+						FlushBadges(sb);
 						Image(e, sb);
 						break;
 					case "circle":
+						FlushBadges(sb);
 						Circle(e, style, sb);
 						break;
 					case "text":
+						FlushBadges(sb);
 						Text(e, style, sb);
 						break;
 					case "title":
@@ -1013,6 +1253,23 @@ public class MarkdownToFlowDocument : Task
 						Fail(e, "<" + e.Name.LocalName + "> is not one of the elements the converter draws (g, title, image, circle, text)");
 						break;
 				}
+			}
+			FlushBadges(sb);
+		}
+
+		// For Avalonia the badges that follow one another are one element, a control of the Avalonia head that draws
+		// them all (Help/FigureBadges there; 2026-11-23, the user's choice): as a Border and a text block each, the
+		// manual's 811 badges were 1622 controls, every one made, measured, arranged and drawn for itself, a sixth to a
+		// fifth of the manual's layout. They are written where they stand among the other elements, so what lies over
+		// what stays as the SVG has it.
+		private void FlushBadges(StringBuilder sb)
+		{
+			if (_badges.Length > 0)
+			{
+				sb.AppendLine("<help:FigureBadges>");
+				sb.Append(_badges);
+				sb.AppendLine("</help:FigureBadges>");
+				_badges.Clear();
 			}
 		}
 
@@ -1026,7 +1283,8 @@ public class MarkdownToFlowDocument : Task
 			{
 				return;
 			}
-			sb.AppendLine(tip == null ? "<Canvas>" : "<Canvas ToolTip=\"" + Escape(tip) + "\">");
+			FlushBadges(sb);
+			sb.AppendLine(tip == null ? "<Canvas>" : "<Canvas " + _task.TipAttribute + "=\"" + _task.Value(tip) + "\">");
 			Children(e, own, sb);
 			sb.AppendLine("</Canvas>");
 		}
@@ -1061,6 +1319,39 @@ public class MarkdownToFlowDocument : Task
 			string ink = Paint(text, own.Fill ?? "black");
 			// the Border's edge, like SVG's stroke, is centred on the radius: the box grows by the stroke
 			double box = (2 * r + strokeWidth) * _unit;
+			if (_task._avalonia)
+			{
+				// one line of the element FlushBadges writes: the centre, the disc's whole width, and what it is drawn with
+				_badges.Append("<help:Badge X=\"" + N((cx - _left) * _unit) + "\" Y=\"" + N((cy - _top) * _unit) + "\" Size=\"" + N(box) + "\"");
+				if (fill != null)
+				{
+					_badges.Append(" Fill=\"" + Escape(fill) + "\"");
+				}
+				if (stroke != null)
+				{
+					_badges.Append(" Stroke=\"" + Escape(stroke) + "\" StrokeThickness=\"" + N(strokeWidth * _unit) + "\"");
+				}
+				if (own.FontFamily != null)
+				{
+					_badges.Append(" FontFamily=\"" + Escape(own.FontFamily) + "\"");
+				}
+				_badges.Append(" FontSize=\"" + N(own.FontSize * _unit) + "\"");
+				if (own.FontWeight != null)
+				{
+					_badges.Append(" FontWeight=\"" + own.FontWeight + "\"");
+				}
+				if (ink != null)
+				{
+					_badges.Append(" Foreground=\"" + Escape(ink) + "\"");
+				}
+				_badges.Append(" Text=\"" + _task.Value(Collapse(text.Value)) + "\"");
+				if (tip != null)
+				{
+					_badges.Append(" Tip=\"" + _task.Value(tip) + "\"");
+				}
+				_badges.AppendLine(" />");
+				return true;
+			}
 			sb.Append("<Border Canvas.Left=\"" + N((cx - _left) * _unit - box / 2) + "\" Canvas.Top=\"" + N((cy - _top) * _unit - box / 2) + "\" Width=\"" + N(box) + "\" Height=\"" + N(box)
 				+ "\" CornerRadius=\"" + N(box / 2) + "\"");
 			if (fill != null)
@@ -1073,7 +1364,7 @@ public class MarkdownToFlowDocument : Task
 			}
 			if (tip != null)
 			{
-				sb.Append(" ToolTip=\"" + Escape(tip) + "\"");
+				sb.Append(" " + _task.TipAttribute + "=\"" + _task.Value(tip) + "\"");
 			}
 			sb.Append("><TextBlock HorizontalAlignment=\"Center\" VerticalAlignment=\"Center\"");
 			if (own.FontFamily != null)
@@ -1089,7 +1380,7 @@ public class MarkdownToFlowDocument : Task
 			{
 				sb.Append(" Foreground=\"" + Escape(ink) + "\"");
 			}
-			sb.AppendLine(" Text=\"" + Escape(Collapse(text.Value)) + "\" /></Border>");
+			sb.AppendLine(" Text=\"" + _task.Value(Collapse(text.Value)) + "\" /></Border>");
 			return true;
 		}
 
@@ -1136,7 +1427,7 @@ public class MarkdownToFlowDocument : Task
 			string name = _images == 1 ? _name : _name + "-" + _images.ToString(CultureInfo.InvariantCulture);
 			string file = _task.WriteFigure(_path + "#" + _images.ToString(CultureInfo.InvariantCulture), name, match.Groups[1].Value == "png" ? ".png" : ".jpg", bytes);
 			sb.AppendLine("<Image Canvas.Left=\"" + N((x - _left) * _unit) + "\" Canvas.Top=\"" + N((y - _top) * _unit) + "\" Width=\"" + N(width * _unit) + "\" Height=\"" + N(height * _unit)
-				+ "\" Stretch=\"Fill\" RenderOptions.BitmapScalingMode=\"HighQuality\" Source=\"" + Escape(_task.FigureUri + file) + "\" />");
+				+ "\" Stretch=\"Fill\" " + _task.ScalingAttribute + "=\"HighQuality\" Source=\"" + Escape(_task.FigureUri + file) + "\" />");
 		}
 
 		// SVG strokes a circle on its radius; WPF's Ellipse keeps the stroke inside its box, so the box grows by the stroke
@@ -1210,7 +1501,7 @@ public class MarkdownToFlowDocument : Task
 			{
 				sb.Append(" Foreground=\"" + Escape(fill) + "\"");
 			}
-			sb.AppendLine(" Text=\"" + Escape(Collapse(e.Value)) + "\" /></Grid>");
+			sb.AppendLine(" Text=\"" + _task.Value(Collapse(e.Value)) + "\" /></Grid>");
 		}
 
 		/// <summary>A colour as WPF reads it (#RGB, #RRGGBB or a name), or null for "none".</summary>
@@ -2115,4 +2406,14 @@ public class MarkdownToFlowDocument : Task
 	}
 
 	private static string Escape(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
+
+	// a text as an attribute's value: escaped, and for Avalonia with "{}" in front of one that begins with a brace, which
+	// its XAML compiler would read as a markup extension
+	private string Value(string s) => (_avalonia && s.StartsWith("{", StringComparison.Ordinal) ? "{}" : "") + Escape(s);
+
+	/// <summary>The attribute that gives an element its tooltip: a property in WPF, an attached one in Avalonia.</summary>
+	private string TipAttribute => _avalonia ? "ToolTip.Tip" : "ToolTip";
+
+	/// <summary>The attribute that has a picture resampled at high quality, by each framework's name for it.</summary>
+	private string ScalingAttribute => _avalonia ? "RenderOptions.BitmapInterpolationMode" : "RenderOptions.BitmapScalingMode";
 }

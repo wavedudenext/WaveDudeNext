@@ -31,9 +31,10 @@ namespace WaveDudeNext.App.Help;
 
 /// <summary>
 /// The About dialog (Help > About), as upstream's: product, version and copyright from <see cref="AboutInfo"/>, the
-/// credits as in the source header with their links, the license sentence with the embedded LICENSE.md rendered on
-/// request, and the system report with a Copy button. Closed by Esc or Enter; every link and button is in the Tab
-/// cycle, the focus starts on Close. The dialog's content (<see cref="IDialogView"/>, 2026-11-15):
+/// credits as in the source header with their links, the license sentence with LICENSE.md, as the build converts it
+/// (<see cref="HelpDocument"/>), shown on request, and the system report with a Copy button. Closed by Esc or
+/// Enter; every link and button is in the Tab cycle, the focus starts on Close. The dialog's content
+/// (<see cref="IDialogView"/>, 2026-11-15):
 /// <see cref="Show"/> puts it into a modal <see cref="AboutWindow"/> owned by the main window on a desktop, and over
 /// the main view where there are no windows (the browser head). UI thread only.
 /// </summary>
@@ -45,7 +46,7 @@ public partial class AboutView : UserControl, IDialogView
 	/// <summary>The grid row of the license document and of the filler above the buttons (the XAML's RowDefinitions).</summary>
 	private const int LicenseRow = 3, FillerRow = 5;
 	private readonly string _report;
-	private MarkdownDocument? _license;
+	private HelpDocument? _license;
 
 	/// <summary>Builds the dialog and gathers the system report once.</summary>
 	public AboutView()
@@ -181,7 +182,7 @@ public partial class AboutView : UserControl, IDialogView
 		bool show = !licenseBox.IsVisible;
 		if (show && _license == null)
 		{
-			_license = MarkdownDocument.Render(AboutInfo.LicenseMarkdown(), new MarkdownRenderOptions { TightLists = false, Name = "LICENSE.md" });
+			_license = HelpDocument.Load(HelpDocument.License);
 			_license.LinkActivated += (_, args) =>
 			{
 				if (!args.Target.StartsWith('#'))

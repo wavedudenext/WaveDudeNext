@@ -25,7 +25,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
              x:Class="WaveDudeNext.App.Help.ManualView"
              dialogs:DialogFrame.Title="{DynamicResource ManualTitle}"
              dialogs:DialogFrame.Width="1200" dialogs:DialogFrame.Height="820">
-	<!-- Help > Manual (upstream, 2026-10-30, the user's request and choices): MANUAL.md rendered at run time, beside a
+	<!-- Help > Manual (upstream, 2026-10-30, the user's request and choices): MANUAL.md as the build converts it, beside a
 	     contents tree of its chapters and sections by heading level, every branch open, the title no row (the frame's
 	     title names the manual). It opens with the text at its top and the first chapter taken; a row taken by a click
 	     or the arrows goes to its heading, a click on the taken row or Enter goes there again, Enter moving the focus
