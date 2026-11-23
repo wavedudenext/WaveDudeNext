@@ -279,6 +279,26 @@ FrameStore: native memory up to the budget, the rest in a temp file (%LOCALAPPDA
   detached inside it) and the Gaussian ones are bit for bit the same; 1, 18 and 23 (10/10, 10/20, 15/15) gain the outer
   halves, 1 to 2 % of a burst's energy. `library_check` proves the shape for six pairs of widths and 20/2 through both
   engines.
+  **Emitters that share a cell are applied one after the other on the card** (2026-11-19, a bug found by the tests for
+  the 0.1.4 release and fixed that day; in every version up to 0.1.3). The card applied all emitters in one launch of
+  `apply_object_sources`, each work item reading its cell and writing the soft source's blend back, so two emitters
+  on one cell raced and one drive was lost: Example 6 (a composite source with random positions, 225 emitters on 224
+  cells) gave a field that differed between two runs on the card, and from the CPU's, by up to 25 to 33 % of its
+  largest value, 15 % of the cells differing after 240 steps; Example 17 (121 emitters on 110 cells) repeated itself
+  on the card but lay 14 % off the CPU's. `GpuTables.Passes` orders the emitters into passes, no cell twice in a pass,
+  an emitter behind every earlier one of its cell, and `GpuWaveSimulator` launches the kernel once a pass over that
+  pass's range of the tables (a global work offset), so every cell gets its emitters in the list's order, the CPU
+  engine's. Nearly every project is one pass, launched as before. After it: Example 6 three runs bit for bit the same
+  and 0.05 % from the CPU's, Example 17 0.02 %; `library_check` proves the passes and a scene with three and two
+  emitters on a cell against the CPU in four runs. **The browser head's WebGPU engine applies them in the same
+  passes** (the same day, on the user's word after I had reported it as "not fixed": "fucking fix it buddy"):
+  `WebGpuWaveSimulator.SetEmitters` orders the table by `GpuTables.Passes` and hands the script the passes' ends;
+  `webgpu-engine.js` makes a uniform buffer and its bind groups a pass (the buffers written before a submit hold their
+  last values for all of it, so one buffer cannot serve two launches) and encodes a compute pass each, the kernel
+  taking its stretch of the table from `first` up to `n`. Proven in a headless Edge on a copy of the tree, a project
+  of two sources on one pixel with a point probe beside them, the probe's CSV of 200 steps against the CPU engine's
+  series: 37.9 % of the series' largest value apart before, 0.0005 % after (twice); an ordinary project (four emitters
+  on four cells, one pass) 0.0003 %.
 - **Frames vs steps**: frame k is the state after step `k × VisualizeEvery`.
 - **The engine choice is a user setting** (Simulation > Use the GPU, default on, CPU fallback logged).
 - **Frame store**: budget = the lesser of free physical memory and available commit (2026-10-19: Windows refuses an

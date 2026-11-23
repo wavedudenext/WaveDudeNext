@@ -215,6 +215,43 @@ public static class GpuTables
 	}
 
 	/// <summary>
+	/// The emitters in the order a card applies them, in passes: within a pass no two emitters drive the same cell, and an
+	/// emitter that shares its cell with earlier ones comes in a later pass than each of them. A card applies a pass's
+	/// emitters at once, each reading its cell and writing it back (the soft source's blend), so two on one cell in the
+	/// same launch race: one's drive is lost, which one changing from step to step and run to run. The passes, launched
+	/// one after the other, give every cell its emitters in the list's order, which is the CPU engine's. Almost every
+	/// project has one pass, the list as it is; a composite source with random positions, or two sources put on one
+	/// pixel, has a second (2026-11-19, found by the release tests: Example 6's 225 emitters fall on 224 cells, and its
+	/// field on the card differed between two runs by up to a third of its largest value, in every version so far).
+	/// </summary>
+	/// <param name="sources">The emitters inside the canvas, in the project's order (<see cref="InCanvas"/>).</param>
+	/// <returns>The emitters by pass, each pass in the list's order, and for every pass the count of emitters up to its end.</returns>
+	public static (List<Emitter> Ordered, int[] PassEnds) Passes(IReadOnlyList<Emitter> sources)
+	{
+		// the pass of an emitter: how many emitters before it in the list share its cell
+		var seen = new Dictionary<(int X, int Y), int>();
+		var passes = new List<List<Emitter>>();
+		foreach (Emitter source in sources)
+		{
+			seen.TryGetValue((source.X, source.Y), out int pass);
+			seen[(source.X, source.Y)] = pass + 1;
+			if (pass == passes.Count)
+			{
+				passes.Add([]);
+			}
+			passes[pass].Add(source);
+		}
+		var ordered = new List<Emitter>(sources.Count);
+		int[] ends = new int[passes.Count];
+		for (int pass = 0; pass < passes.Count; pass++)
+		{
+			ordered.AddRange(passes[pass]);
+			ends[pass] = ordered.Count;
+		}
+		return (ordered, ends);
+	}
+
+	/// <summary>
 	/// The object sources as the kernel's tables, one entry per emitter (see the <c>apply_object_sources</c> kernel for what
 	/// each drives). <paramref name="OffWidth"/>, <paramref name="CycleAnchor"/> and <paramref name="RngState"/> are the
 	/// kernel's own state from then on: an element that re-randomizes its off-width redraws it on the card.

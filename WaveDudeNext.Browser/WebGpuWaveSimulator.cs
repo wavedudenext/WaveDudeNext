@@ -207,11 +207,14 @@ public sealed partial class WebGpuWaveSimulator : IWaveEngine, IDisposable
 		Flush();
 		List<Emitter> inside = GpuTables.InCanvas(emitters, _canvasWidth, _canvasHeight);
 		_objSources = inside;
-		GpuTables.EmitterTables t = GpuTables.Emitters(inside, _rim, _stride, _sourceFrequencyScale);
+		// the order the card applies them in: emitters that share a cell go into passes of their own, launched one after
+		// the other, since those of one launch run at once and each reads and writes its cell (GpuTables.Passes, 2026-11-19)
+		(List<Emitter> ordered, int[] passEnds) = GpuTables.Passes(inside);
+		GpuTables.EmitterTables t = GpuTables.Emitters(ordered, _rim, _stride, _sourceFrequencyScale);
 		// sixteen 32-bit words an element, the kernel's structure
-		byte[] table = new byte[inside.Count * 64];
+		byte[] table = new byte[ordered.Count * 64];
 		Span<int> words = MemoryMarshal.Cast<byte, int>(table.AsSpan());
-		for (int i = 0; i < inside.Count; i++)
+		for (int i = 0; i < ordered.Count; i++)
 		{
 			Span<int> e = words.Slice(i * 16, 16);
 			e[0] = t.Index[i];
@@ -230,7 +233,8 @@ public sealed partial class WebGpuWaveSimulator : IWaveEngine, IDisposable
 		}
 		// the intensity's averaging time constant follows the lowest source level in use (image or object)
 		float alpha = GpuTables.IntensityAlpha(_timeDecay, _levelUsed, inside);
-		Invoke(() => SetEmitters(_engine, inside.Count, table, alpha));
+		byte[] ends = MemoryMarshal.AsBytes(passEnds.AsSpan()).ToArray();
+		Invoke(() => SetEmitters(_engine, ordered.Count, table, alpha, ends));
 	}
 
 	/// <inheritdoc/>
@@ -585,7 +589,7 @@ public sealed partial class WebGpuWaveSimulator : IWaveEngine, IDisposable
 		[JSMarshalAs<JSType.MemoryView>] Span<byte> c2Table, [JSMarshalAs<JSType.MemoryView>] Span<byte> dTable, [JSMarshalAs<JSType.MemoryView>] Span<byte> imageSources);
 
 	[JSImport("setEmitters", "webgpu-engine")]
-	private static partial void SetEmitters(int engine, int count, [JSMarshalAs<JSType.MemoryView>] Span<byte> table, float alpha);
+	private static partial void SetEmitters(int engine, int count, [JSMarshalAs<JSType.MemoryView>] Span<byte> table, float alpha, [JSMarshalAs<JSType.MemoryView>] Span<byte> passEnds);
 
 	[JSImport("reset", "webgpu-engine")]
 	private static partial void Reset(int engine);

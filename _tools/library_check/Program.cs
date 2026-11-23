@@ -268,6 +268,7 @@ internal static class Program
 		CheckMirror(W, H);
 		CheckDecimalLevels(W, H);
 		CheckPulseEnvelope(W, H);
+		CheckEmittersOnOneCell(W, H);
 		CheckMovable();
 		CheckRanges();
 		CheckHistory();
@@ -1270,6 +1271,58 @@ internal static class Program
 			float diff = MaxDiff(cpu, gpu.FieldData);
 			Check(diff < 1e-3f * Math.Max(1f, MaxAbs(cpu)), "GPU agrees on a decimal level and phase (max diff " + diff + ")");
 		}
+	}
+
+	// Emitters that share a cell (2026-11-19, found by the release tests on Example 6, whose composite source with random
+	// positions puts 225 emitters on 224 cells): the card applied all emitters in one launch, each reading its cell and
+	// writing it back, so two on one cell raced and the field differed from run to run by up to a third of its largest
+	// value. They are applied in passes now (GpuTables.Passes), each cell's emitters in the list's order, as the CPU does.
+	private static void CheckEmittersOnOneCell(int W, int H)
+	{
+		Console.WriteLine("--- emitters that share a cell");
+		// three on one cell (two continuous of different levels, one pulsed), two on another, two alone; one outside
+		var emitters = new List<Emitter>
+		{
+			Make(20, 24, 120, 1.0), Make(40, 12, 90, 0.8), Make(20, 24, 200, 0.7, phase: 1.0), Make(50, 30, 150, 0.6),
+			Make(40, 12, 160, 0.9, SourceMode.Pulsed, PulseShape.SmoothedSquare, onWidth: 3, offWidth: 2), Make(10, 40, 110, 0.5),
+			Make(20, 24, 70, 0.9, SourceMode.Pulsed, PulseShape.Gaussian, onWidth: 4, offWidth: 4, randomize: 3, seed: 77), Make(99, 99, 50, 9.0),
+		};
+		List<Emitter> inside = GpuTables.InCanvas(emitters, W, H);
+		(List<Emitter> ordered, int[] ends) = GpuTables.Passes(inside);
+		bool inOrder = ends.SequenceEqual([4, 6, 7]) && ordered.Count == 7
+			&& ordered.Take(4).Select(e => (e.X, e.Y)).Distinct().Count() == 4 && ordered.Skip(4).Take(2).Select(e => (e.X, e.Y)).Distinct().Count() == 2
+			&& ordered.Where(e => e.X == 20 && e.Y == 24).Select(e => e.Level).SequenceEqual([120.0, 200.0, 70.0])
+			&& ordered.Where(e => e.X == 40 && e.Y == 12).Select(e => e.Level).SequenceEqual([90.0, 160.0]);
+		Check(inOrder, "passes: 7 emitters on 4 cells make passes of 4, 2 and 1, no cell twice in a pass, each cell's emitters in the list's order (" + string.Join(", ", ends) + ")");
+		(List<Emitter> alone, int[] oneEnd) = GpuTables.Passes(Sources().Take(3).ToList());
+		Check(oneEnd.SequenceEqual([3]) && alone.SequenceEqual(Sources().Take(3)) && GpuTables.Passes([]).PassEnds.Length == 0, "passes: emitters on cells of their own are one pass, the list as it is; none, no pass");
+		SceneData scene = SceneData.Empty(W, H, 0);
+		float[] cpu = RunCpu(scene, emitters, 200);
+		float[] apart = RunCpu(scene, [.. emitters.Take(2), .. emitters.Skip(3)], 200);
+		Check(MaxDiff(cpu, apart) > 1e-3f, "the CPU engine applies every emitter of a cell (without the second of three the field differs)");
+		var options = new EngineOptions(1.0, 1.0, false, false, 10.0, 1.0);
+		float worst = 0f;
+		bool repeats = true;
+		float[]? first = null;
+		for (int round = 0; round < 4; round++)
+		{
+			GpuWaveSimulator? gpu = GpuWaveSimulator.TryCreate(scene, options, emitters, out string problems);
+			if (gpu == null)
+			{
+				Console.WriteLine("  skip GPU: " + problems);
+				return;
+			}
+			using (gpu)
+			{
+				Run(gpu, 200);
+				float[] field = (float[])gpu.FieldData.Clone();
+				worst = Math.Max(worst, MaxDiff(cpu, field));
+				first ??= field;
+				repeats &= MemoryMarshal.AsBytes(field.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(first.AsSpan()));
+			}
+		}
+		Check(worst < 1e-3f * Math.Max(1f, MaxAbs(cpu)), "GPU agrees with the CPU on cells with two and three emitters, in four runs (max diff " + worst + " of " + MaxAbs(cpu) + ")");
+		Check(repeats, "GPU: four runs give the same field bit for bit");
 	}
 
 	// The smoothed square's envelope (2026-11-10, Jeroen's report: a source of 20 cycles on and 2 off emitted for 11 and

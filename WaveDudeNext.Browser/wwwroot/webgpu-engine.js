@@ -124,9 +124,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 }`;
 
 // apply_object_sources: one element per work item; the off-width, the cycle anchor and the random state are the
-// kernel's own from one step to the next (an element that re-randomizes its off-width redraws it here)
+// kernel's own from one step to the next (an element that re-randomizes its off-width redraws it here). A launch
+// covers one pass of the table, the elements from first up to n: within a pass no two elements drive the same cell
+// (see setEmitters)
 const objectSourceShader = () => `
-struct Params { t: f32, n: i32, pad0: i32, pad1: i32 };
+struct Params { t: f32, n: i32, first: i32, pad1: i32 };
 struct Source {
 	idx: i32, omega: f32, amp: f32, phase: f32,
 	mode: i32, pulseShape: i32, onWidth: i32, offWidth: i32,
@@ -146,7 +148,7 @@ fn xorshift32(seed: u32) -> u32 {
 }
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-	let k = i32(id.x);
+	let k = i32(id.x) + p.first;
 	if (k >= p.n) { return; }
 	let t = p.t;
 	var detachFade = 1.0;
@@ -445,7 +447,7 @@ export function create(w, h, stride, rim, canvasWidth, canvasHeight, fourth, tra
 	const cells = stride * (h + 2);
 	const e = {
 		w, h, stride, rim, canvasWidth, canvasHeight, fourth, track, openEdges, subSteps, c2Scale, alpha, intensityScale, sourceAmplitude, sourceCount, cells,
-		dTableCapacity, current: 0, time: 0, objectCount: 0, captures: new Map(), nextCapture: 1, readPool: new Map(), probes: null,
+		dTableCapacity, current: 0, time: 0, objectCount: 0, objectPasses: [], captures: new Map(), nextCapture: 1, readPool: new Map(), probes: null,
 		// steps sent to the card, and how many of them it is known to have done (see run)
 		submitted: 0, done: 0,
 	};
@@ -462,7 +464,6 @@ export function create(w, h, stride, rim, canvasWidth, canvasHeight, fourth, tra
 	e.stepParams = [uniform(32), uniform(32)];
 	e.edgeParams = uniform(32);
 	e.imageParams = uniform(16);
-	e.objectParams = uniform(16);
 	writeStepParams(e);
 	const step = pipeline('step' + fourth, () => stepShader(fourth));
 	// stepGroups[newest][track]: reads the newest field, overwrites the other
@@ -510,15 +511,28 @@ export function setScene(number, subSteps, c2Scale, c2Index, dIndex, c2Table, dT
 	writeStepParams(e);
 }
 
-// the object sources' table (16 words an element, see the kernel's structure) and the intensity's retention, which
-// follows the lowest source level in use
-export function setEmitters(number, count, table, alpha) {
+// the object sources' table (16 words an element, see the kernel's structure), the passes it is applied in, and the
+// intensity's retention, which follows the lowest source level in use. The passes (the library's GpuTables.Passes,
+// 2026-11-19): the elements of one launch run at once, each reading its cell and writing it back, so two that drive
+// the same cell must not share a launch, or one's drive is lost. The table comes ordered by pass, passEnds holding
+// for every pass the count of elements up to its end as 32-bit numbers; nearly every project has one pass. A pass has
+// a uniform buffer of its own, since the buffers written before a submit hold their last values for all of it.
+export function setEmitters(number, count, table, alpha, passEnds) {
 	const e = engines.get(number);
 	if (e.objectSources) { e.objectSources.destroy(); }
+	for (const objects of e.objectPasses) { objects.params.destroy(); }
 	e.objectCount = count;
 	e.objectSources = storage(Math.max(64, count * 64), count > 0 ? table.slice() : null);
 	const made = pipeline('object', objectSourceShader);
-	e.objectGroups = [0, 1].map(newest => group(made, [e.objectParams, e.field[newest], e.objectSources]));
+	const ends = count > 0 ? passEnds.slice() : new Uint8Array(0);
+	const numbers = new Int32Array(ends.buffer, ends.byteOffset, ends.byteLength >> 2);
+	e.objectPasses = [];
+	let first = 0;
+	for (const end of numbers) {
+		const params = uniform(16);
+		e.objectPasses.push({ first, end, params, groups: [0, 1].map(newest => group(made, [params, e.field[newest], e.objectSources])) });
+		first = end;
+	}
 	e.alpha = alpha;
 	writeStepParams(e);
 }
@@ -543,12 +557,13 @@ function step(e) {
 		device.queue.writeBuffer(e.imageParams, 0, data);
 		pass(encoder, pipeline('image'), e.imageGroups[e.current], Math.ceil(e.sourceCount / 64));
 	}
-	if (e.objectCount > 0) {
+	// a launch per pass, one after the other, each over its own stretch of the table
+	for (const objects of e.objectPasses) {
 		const data = new ArrayBuffer(16);
 		new Float32Array(data, 0, 1)[0] = e.time;
-		new Int32Array(data, 4, 1)[0] = e.objectCount;
-		device.queue.writeBuffer(e.objectParams, 0, data);
-		pass(encoder, pipeline('object'), e.objectGroups[e.current], Math.ceil(e.objectCount / 64));
+		new Int32Array(data, 4, 2).set([objects.end, objects.first]);
+		device.queue.writeBuffer(objects.params, 0, data);
+		pass(encoder, pipeline('object'), objects.groups[e.current], Math.ceil((objects.end - objects.first) / 64));
 	}
 	const made = pipeline('step' + e.fourth);
 	for (let sub = 1; sub <= e.subSteps; sub++) {
@@ -790,7 +805,7 @@ export function destroy(number) {
 	engines.delete(number);
 	setProbesOf(e);
 	const buffers = [...e.field, e.inten1, e.inten, e.c2Index, e.dIndex, e.c2Table, e.dTable, e.frequencies, e.imageSources, e.objectSources,
-		...e.stepParams, e.edgeParams, e.imageParams, e.objectParams, ...e.staging, ...e.captureParams];
+		...e.stepParams, e.edgeParams, e.imageParams, ...e.objectPasses.map(objects => objects.params), ...e.staging, ...e.captureParams];
 	for (const pool of e.readPool.values()) { buffers.push(...pool); }
 	for (const taken of e.captures.values()) { buffers.push(...taken.targets); }
 	for (const buffer of buffers) { if (buffer) { buffer.destroy(); } }

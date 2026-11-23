@@ -178,15 +178,28 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 		// object sources: keep only the elements whose position is inside the canvas (a randomized composite
 		// element can fall outside), same filtering as the CPU engine (WaveSimulator)
 		List<Emitter> sourcesInScene = GpuTables.InCanvas(emitters, _canvasWidth, _canvasHeight);
+		// the order the card applies them in: emitters that share a cell go into passes of their own, launched one after
+		// the other, since those of one launch run at once and each reads and writes its cell (GpuTables.Passes,
+		// 2026-11-19); one pass, the list as it is, for nearly every project
+		(List<Emitter> ordered, int[] passEnds) = GpuTables.Passes(sourcesInScene);
 		// the tables and kernels of the previous emitters go; the program and the scene stay
 		Quietly(() => OpenClApi.clFinish(_queue));
 		_emitters.Release();
-		_objSourceCount = sourcesInScene.Count;
-		_objGrid1D = new[] { new IntPtr(Math.Max(1, _objSourceCount)) };
+		_objSourceCount = ordered.Count;
+		_objPasses = new (IntPtr[]? Offset, IntPtr[] Size)[passEnds.Length];
+		for (int pass = 0; pass < passEnds.Length; pass++)
+		{
+			int start = pass == 0 ? 0 : passEnds[pass - 1];
+			_objPasses[pass] = (start == 0 ? null : [new IntPtr(start)], [new IntPtr(passEnds[pass] - start)]);
+		}
 		_objSources = sourcesInScene;
 		if (_objSourceCount > 0)
 		{
-			BuildObjectSourceKernels(sourcesInScene);
+			BuildObjectSourceKernels(ordered);
+			if (passEnds.Length > 1)
+			{
+				Logger.Debug("GPU engine: {Count} emitters on {Cells} cells, applied in {Passes} passes so that those sharing a cell follow one another", ordered.Count, passEnds[0], passEnds.Length);
+			}
 		}
 		// the intensity's averaging time constant follows the lowest source level in use (image or object)
 		float intensityAlpha = GpuTables.IntensityAlpha(_timeDecay, _levelUsed, sourcesInScene);
@@ -1234,7 +1247,11 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 		if (_objSourceCount > 0)
 		{
 			SetFloat(_objSourceKernel[current], 11U, (float)_time);
-			Enqueue(_objSourceKernel[current], _objGrid1D, "object sources");
+			// a launch per pass, each over its own range of the tables (the work items' ids start at the range's start)
+			foreach ((IntPtr[]? offset, IntPtr[] size) in _objPasses)
+			{
+				OpenClApi.Check(OpenClApi.clEnqueueNDRangeKernel(_queue, _objSourceKernel[current], 1U, offset, size, null, 0U, IntPtr.Zero, IntPtr.Zero), "clEnqueueNDRangeKernel (object sources)");
+			}
 		}
 		// _subSteps smaller launches (see the class summary); only the last one updates the intensity buffer, so
 		// its own exponential averaging still runs once per AdvanceOneStep call, not _subSteps times. On the
@@ -1925,8 +1942,11 @@ public sealed class GpuWaveSimulator : IWaveEngine, IDisposable
 	/// <summary>Global work size of <c>apply_sources</c>: max(1, <see cref="_sourceCount"/>).</summary>
 	private readonly IntPtr[] _grid1D;
 
-	/// <summary>Global work size of <c>apply_object_sources</c>: max(1, <see cref="_objSourceCount"/>).</summary>
-	private IntPtr[] _objGrid1D = [new IntPtr(1)];
+	/// <summary>
+	/// The launches of <c>apply_object_sources</c> in a step, one per pass of <see cref="GpuTables.Passes"/>: where the pass
+	/// starts in the emitters' tables (null for the start) and how many emitters it has; set by <see cref="SetEmitters"/>.
+	/// </summary>
+	private (IntPtr[]? Offset, IntPtr[] Size)[] _objPasses = [];
 
 	/// <summary>Host copy of the newest field, refreshed by <see cref="PrepareFrame"/>; exposed as <see cref="FieldData"/>.</summary>
 	private readonly float[] _hostField;
