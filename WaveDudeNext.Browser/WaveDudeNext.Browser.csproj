@@ -69,6 +69,11 @@
          thread reports the same thread id); Native\thread-id.c, which says more, is linked in the faulty function's
          place (2026-11-13) -->
     <EmccExtraLDFlags>$(EmccExtraLDFlags) -Wl,--wrap=SystemNative_TryGetUInt32OSThreadId</EmccExtraLDFlags>
+    <!-- The start that never came (about one load in five, the page's main thread at a whole core): the runtime's C
+         library lets the main thread wait for a lock it holds itself, when another thread is allocating at the
+         instant the main thread hands on its first call to a thread. Native\proxy-queue.c, which says more, is linked
+         in front of the six functions concerned (2026-11-21) -->
+    <EmccExtraLDFlags>$(EmccExtraLDFlags) -Wl,--wrap=emscripten_proxy_execute_queue -Wl,--wrap=emscripten_proxy_async -Wl,--wrap=emscripten_proxy_sync -Wl,--wrap=emscripten_proxy_sync_with_ctx -Wl,--wrap=emscripten_proxy_callback -Wl,--wrap=emscripten_proxy_callback_with_ctx</EmccExtraLDFlags>
     <!-- A Debug build did not start (2026-11-12 to 14: "Assertion at mono-threads-wasm.c:201"): emscripten puts the
          stack first in memory when a link is not optimised and names no base for the data (its tools\link.py), so the
          main thread's stack began at address 0, and the threaded runtime asserts that a thread's stack address is not
@@ -80,6 +85,7 @@
   <ItemGroup>
     <NativeFileReference Include="Native\thread-id.c" />
     <NativeFileReference Include="Native\framearena.c" />
+    <NativeFileReference Include="Native\proxy-queue.c" />
   </ItemGroup>
 
   <!-- For a memory that may exceed 2 GB the C library's WebGL layer hands over a view of the bytes a texture upload

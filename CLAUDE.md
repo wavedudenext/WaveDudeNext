@@ -2150,7 +2150,7 @@ element into the page itself made the agent start in every one of five loads, wi
 from one load to the next, on the threaded runtime, why is not known, and the fix is that the agent is not
 there: after it, with the script in the page, "hot reload agent not initialised" and the start as ever. **His
 error itself was not reproduced.** An edit while the page runs needs a build and a reload now; his to turn back
-with the one property. **Open, found with it: about one load in five never starts, without a word** (the same
+with the one property. **Found with it, and its cause found on 2026-11-21 ("The start that never came", below): about one load in five never starts, without a word** (the same
 probe, the page loaded again every twelve seconds in one headless tab: loads 9 and 10 of 10 before the change,
 load 3 of 3 after it, one of four that afternoon): the runtime prints its own line about an option and then
 nothing, not even `Main`'s first line, the page does not say "could not start", and the load after it gets
@@ -2771,6 +2771,31 @@ viewport override ends with the session; **the SDK's host reads its list of file
 rebuild it answers "download … failed" for the new fingerprints until it is started again, which is what a rebuild
 under his Start session does to his page. And `sed -i` in Git Bash wrote the markup file with other line ends
 (put back byte for byte): files are edited with the Edit tool.
+**The start that never came**: the main thread waited for a lock of its own. emscripten 3.1.56's queue of calls
+between threads (`proxying.c`, in the SDK's pack) holds its lock while `do_proxy` makes a target thread's task
+queue, which allocates; on the main thread a taken allocator lock is waited for in a loop that carries out the
+thread's own queued calls, and `emscripten_proxy_execute_queue` takes the queue's lock first. Read off a sampling
+profile: `futex_wait_main_browser_thread` under `emscripten_proxy_execute_queue` under `dlmalloc` under
+`get_or_add_tasks_for_thread` under `do_proxy`, the call the runtime's own first one to its managed thread
+(`mono_wasm_invoke_jsexport_async_post`). `Native/proxy-queue.c` is linked in front of the six functions
+(`-Wl,--wrap`): a thread putting a task in says so, and carrying out its own tasks then tries the lock first.
+Reproduced by loading the page and loading it again 0.7 to 7 s later, 24 times a round: without the guard three
+rounds of three hung, at loads 5, 4 and 11; with it 56 such loads in three rounds and no hang. **Seen once in those 56**: a start
+that stopped at "Could not load file or assembly 'System.Xml.ReaderWriter'" in `Main` (the settings store's type
+initialiser), the page still answering, the mark still turning; the same kind as the user's report of 2026-11-14
+('System.Net.Primitives'). I had left it ("not followed"); his word: "why would we not follow it". **Its cause,
+read in the runtime's source (v10.0.15)**: the loader tells "core" assemblies from the rest (`loader/assets.ts`,
+`coreAssembly` and `assembly` of the boot configuration in `dotnet.js`); on the threaded runtime it starts the
+runtime on its own thread once the core ones are in memory (`startup.ts`) and goes on registering the rest from the
+page's main thread (`mono_wasm_add_assembly`) while the starting runtime registers its time-zone data
+(`mono_register_timezones_bundle` in `mono_wasm_load_runtime`, `driver.c`); both write one table that has no lock
+(`bundled-resources.c`, a `dn_simdhash`), so one's entry can be lost, and an assembly reference not found is kept
+as missing for good (`REFERENCE_MISSING`, `assembly.c`). **A published build lists every assembly as core** (71 of
+71) and has no such moment; **a build that is not published, what Start serves in Debug, lists 7**, some 190 in
+the rest, and both sightings were Debug builds. `main.js` makes the rest core, the symbol files with it, in the
+loader's own hook (`withOnConfigLoaded`, which runs before the lists are read, `loader/config.ts` and `run.ts`).
+Proven on a Debug build: the hook leaves 197 assemblies as core and none in the rest, and 24 loads cut short by a
+second load all started.
 **Where the browser's compiled build loses against native, measured** (2026-11-21, the user's question whether the
 ahead-of-time compiling the browser needs has the faults ReadyToRun had on the desktop, and his word to test each
 workaround; a bench app under `%TEMP%` on the repository's library, native beside the browser's build, the tables

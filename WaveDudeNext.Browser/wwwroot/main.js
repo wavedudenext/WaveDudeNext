@@ -232,6 +232,18 @@ try {
 	// ("memory import has a larger maximum size 65536 than the module's declared maximum 32768") and the runtime
 	// would give up only after logging each failure with a dump of the module (2026-11-13). This build is compiled
 	// ahead of time; what is interpreted in it is the little that compilation leaves over.
+	//
+	// Every assembly is in the program's memory before the runtime starts (2026-11-21, on the user's word to follow
+	// a start that ended with "Could not load file or assembly 'System.Xml.ReaderWriter'", once in 56 loads, the kind
+	// he had met himself on 2026-11-14 with 'System.Net.Primitives'). The runtime's loader tells the "core"
+	// assemblies, which it puts into memory first, from the rest, which on the threaded runtime it goes on
+	// registering from this thread while the runtime is already starting on its own (startup.ts and loader/assets.ts
+	// at v10.0.15). The table they are registered in has no lock (bundled-resources.c), and the starting runtime
+	// writes it too, with its time-zone data (mono_wasm_load_runtime in driver.c): two writers at once, one of
+	// whose entries can be lost, and the lost assembly is then not found by whoever asks for it first, which the
+	// runtime remembers for good. A published build lists every assembly as core and has no such moment; a build
+	// that is not published, which is what Start serves in Debug, lists seven, with some 190 in the rest. So the
+	// rest is made core here, the symbol files with it, before the loader looks at the lists.
 	// The loading mark's bar and megabytes (index.html; 2026-11-22, the user's choice of look): how far the download
 	// is, in the megabytes that come over the network. The runtime says only how many files it has, and one of them,
 	// the compiled program, is three fifths of the download: a bar by files would stand for most of the time and
@@ -348,6 +360,14 @@ try {
 		});
 	}).withOnConfigLoaded(config => {
 		const resources = config.resources;
+		if (resources && resources.coreAssembly && resources.assembly && resources.assembly.length > 0) {
+			resources.coreAssembly.push(...resources.assembly);
+			resources.assembly = [];
+		}
+		if (resources && resources.pdb && resources.pdb.length > 0) {
+			resources.corePdb = (resources.corePdb || []).concat(resources.pdb);
+			resources.pdb = [];
+		}
 		// the loading mark: every file of the list is asked for now (the files lie beside the runtime's script); a
 		// failure waits for the runtime's asking, which then goes its own way
 		if (resources && document.getElementById('loading')) {
