@@ -125,6 +125,7 @@ public static class AboutInfo
 			Line("AboutGpuSettingWebGpu", label(gpuSetting ? "AboutOn" : "AboutOff"));
 			string name = device();
 			Line("AboutWebGpuDevice", name.Length > 0 ? name : label("AboutNone"));
+			Line("AboutH264Encoders", ExportFormats.PlatformH264?.Description ?? label("AboutNone"));
 			return sb.ToString().TrimEnd();
 		}
 		Line("AboutGpuSetting", label(gpuSetting ? "AboutOn" : "AboutOff"));

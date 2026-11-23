@@ -26,6 +26,7 @@ using Avalonia.Media.Fonts;
 using Avalonia.Threading;
 using WaveDudeNext.App.Theming;
 using WaveDudeNext.Engine;
+using WaveDudeNext.Export;
 using WaveDudeNext.Runs;
 using WaveDudeNext.UI;
 
@@ -96,6 +97,7 @@ internal static partial class Program
 			Task<LocalStorageSettings> settings = LocalStorageSettings.CreateAsync();
 			Task<SystemFont?> systemFont = SystemFont.CreateAsync();
 			Task<PageDrops> drops = PageDrops.CreateAsync();
+			Task<PlatformH264Encoder?> encoder = WebCodecsH264Encoder.FindAsync();
 			// the user settings are kept in the browser's local storage (2026-11-14, the user's choice), where the desktop
 			// heads have a file; before anything asks for a setting, since the settings are read at their first use
 			try
@@ -125,6 +127,9 @@ internal static partial class Program
 				App.App.Logger.Warn(ex, "The script that reads a drop could not be loaded: files and text dropped on the page are not taken");
 			}
 			App.App.Logger.Debug("The page's scripts had answered {Elapsed:0} ms after they were asked", Stopwatch.GetElapsedTime(asked).TotalMilliseconds);
+			// the browser's own H.264 encoder is not waited for: its answer is wanted at the first export, and a browser
+			// takes its time over it (it asks the graphics card what it encodes; most of a second in Edge, measured)
+			_ = UseEncoderAsync(encoder, asked);
 		}
 		// the browser's GPU engine stands in for the OpenCL one, which a browser does not have; where the browser has
 		// no WebGPU either, the factory says why and gives the CPU engine
@@ -143,6 +148,25 @@ internal static partial class Program
 			// the page would stay empty without a word: the browser's console is this head's log
 			App.App.Logger.Fatal(ex, "The application could not start");
 			throw;
+		}
+	}
+
+	/// <summary>
+	/// The browser's own H.264 encoder, where it has one for a page (WebCodecs), becomes the head's
+	/// (<see cref="ExportFormats.PlatformH264"/>) when the browser has answered: MP4 is among the export formats
+	/// from then on, and in no dialog of this head where the browser has none. The scripts' thread.
+	/// </summary>
+	private static async Task UseEncoderAsync(Task<PlatformH264Encoder?> encoder, long asked)
+	{
+		try
+		{
+			ExportFormats.PlatformH264 = await encoder;
+			App.App.Logger.Debug("H.264: {Encoder} (answered after {Elapsed:0} ms)",
+				ExportFormats.PlatformH264?.Description ?? "the browser hands the page no encoder; MP4 is not among the export formats", Stopwatch.GetElapsedTime(asked).TotalMilliseconds);
+		}
+		catch (Exception ex)
+		{
+			App.App.Logger.Warn(ex, "The browser's H.264 encoder could not be asked for: MP4 is not among the export formats");
 		}
 	}
 

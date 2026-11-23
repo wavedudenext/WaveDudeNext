@@ -2938,6 +2938,31 @@ browser. **Driver notes**: a script is put into every worker before its own code
 `waitForDebuggerOnStart`, a `Runtime.evaluate` on the worker's session and `Runtime.runIfWaitingForDebugger`; into
 the page by `Page.addScriptToEvaluateOnNewDocument`; a word of the driver's stop list must not be in the address
 (a parameter named "abort" ended a run at its first line).
+**The round of ten** (2026-11-21/22, the user's pick of ten from a list of eighteen things to improve in the
+browser head: MP4 export, the user's colour schemes, paste from outside, two tabs, the interpreted methods, the
+conversion loops, the scene outline, start-up and download, the manual's opening, text on whole pixels; functional
+tests on the Debug head in a headless Edge, the confirming ones on one Release build in place; nothing committed).
+**MP4**: the browser's own H.264 encoder (WebCodecs) is the head's `IH264Encoder`.
+`ExportFormats.PlatformH264` is the library's hook (a `PlatformH264Encoder`: a description for the About box and
+the factory), tried before the Media Foundation and ffmpeg; without it a browser has `ExportObstacle.BrowserWithoutH264`
+and no process is started for an ffmpeg that cannot be there. `WebCodecsH264Encoder` with `wwwroot/h264-encoder.js`:
+a frame goes to the page as NV12 straight from the program's memory (`VideoFrame` takes a view of the shared
+memory), the encoder is asked for the stream as an MP4 stores it (`avc: { format: 'avc' }`), the page keeps what
+comes out as records (length, kind, frame number, bytes) and the next call takes them into the program's memory, so
+the receiver is called on the export's own thread; the parameter sets are read from the decoder configuration (the
+avcC record) that comes with the first frame; High, then Main, then Constrained Baseline is asked for, at the lowest
+level that holds the size, the rate and the author's bitrate (the standard's table A-1 in the class); a key frame a
+second; no more than three frames wait in the encoder (`dequeue`); frames out of their order would fail the export
+in words. The dialog offers MP4 where `ExportFormats.IsAvailable` says so; About's last line names the encoder.
+**The browser is asked at the start and not waited for** (`Program.UseEncoderAsync`): Edge takes up to most of a
+second over `isConfigSupported` (it asks the graphics card), which the first form added to every start. **A
+browser's encoder writes no colour tag into its stream** (ffmpeg read "yuv420p" where its own stream says "tv,
+smpte170m"), so `Mp4ContainerWriter` writes a `colr` box (nclx: matrix 6, studio range, primaries and transfer
+unspecified) into every file it makes, ffmpeg's too. Proven: `library_check` (a head's stand-in encoder through
+`ExportFormats.Open`, 876 ok); in the head a 322 × 240 export of 60 frames (0.8 s compiled) and a Full HD one of 40
+(High, level 4.2; 1.2 s compiled, 39 s interpreted), both read back by ffmpeg with every frame and "yuv420p(tv, smpte170m/unknown/unknown)", a frame
+of each looked at; a page without `VideoEncoder`: the log's line and a dialog without MP4. Not seen: a long
+export, another browser, a card without an encoder (Baseline through the browser's software one).
 **The interpreted methods**: `ExportJob.Render`'s sink loop and `SimulationRun.RunLoop` each had a catch inside a
 finally block, for which the compiler leaves a whole method to the interpreter; the catches are in a local function
 and a method of their own now (an IL scan for a handler inside a finally: 2 before, 0 after, none in the other
