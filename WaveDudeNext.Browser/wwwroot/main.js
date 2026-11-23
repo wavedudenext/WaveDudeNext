@@ -113,6 +113,46 @@ globalThis.waveDudeLog = (level, label, message) => {
 	}
 };
 
+// The page's loading mark (index.html) goes when the program's first picture is on the screen: the program calls this
+// then (Program.cs), once. The application's element takes the keyboard with it, unless the visitor has put it
+// elsewhere meanwhile: a key pressed before the first click is the application's, as in a window that has just opened.
+//
+// The mark's bar is the whole way to that picture, not the download alone (2026-11-22, the user's report of a long
+// gap after "Starting…": the bar had been full when the last file was in and then stood for the three or four
+// seconds the program takes to start, eight in a Debug build). The download is its first three fifths. The rest is
+// the start's four stages: the files are in and the runtime starts; the program's Main runs; the application is set
+// up; its view is made and drawn. The first is known here, the others are the program's to tell (waveDudeStage,
+// from Program.cs). Each stage has the share of the bar that its time is of the start's in the compiled build on the
+// machine it was measured on (0.6, 0.2, 1.2 and 0.9 s). During a stage the bar goes on towards the stage's end over
+// five times that, fast at first and ever slower, so it is still moving in a Debug build, where a stage takes four
+// times as long (with twice the time it stood still for two seconds); the next stage takes it on from wherever it is.
+const downloadShare = 0.6;
+const stages = [{ to: 0.68, seconds: 3 }, { to: 0.71, seconds: 1 }, { to: 0.87, seconds: 6 }, { to: 1, seconds: 5 }];
+let stageShown = -1;
+const moveBar = (share, seconds) => {
+	const mark = document.getElementById('loading');
+	if (mark) {
+		mark.style.setProperty('--t', seconds + 's');
+		mark.style.setProperty('--p', share);
+	}
+};
+globalThis.waveDudeStage = stage => {
+	if (stage <= stageShown || !stages[stage]) { return; }
+	stageShown = stage;
+	// what is going on, beside the megabytes, which are the download's own display and stay; in the language the
+	// page settled for the mark (index.html: the program's setting, else the browser's)
+	const status = document.getElementById('loading-status');
+	if (status) { status.textContent = globalThis.waveDudeLoading.starting; }
+	moveBar(stages[stage].to, stages[stage].seconds);
+};
+globalThis.waveDudeStarted = () => {
+	const mark = document.getElementById('loading');
+	if (mark) { mark.remove(); }
+	if (document.activeElement === document.body || !document.activeElement) {
+		document.getElementById('out').focus({ preventScroll: true });
+	}
+};
+
 // The notice a crash leaves on the page (2026-11-14, the user's request): "WaveDude Next has stopped", the error's
 // words and a button that loads the page again. A page is not a process: when the program in it dies, the page
 // stands there as it was and no longer answers, and what happened is a line in a console a visitor does not open.
@@ -146,11 +186,25 @@ globalThis.waveDudeStopped = message => {
 			+ ' background: #1e1e1e; color: #d4d4d4; font: 12px Consolas, monospace;', message),
 		reload);
 	veil.append(box);
+	// a program that stopped before it drew leaves the page's loading mark turning: nothing is loading any more
+	globalThis.waveDudeStarted();
 	document.body.append(veil);
 	reload.focus();
 };
 // an error's words: its stack where it has one (which begins with its name and message), else whatever it says
 const wordsOf = error => String(error && (error.stack || error.message) || error);
+// A start that failed: its words in the loading mark's place (the text replaces it), in the page's own colours,
+// which follow the desktop's scheme. The first failure's words stay.
+let startHasFailed = false;
+const startFailed = error => {
+	if (startHasFailed) {
+		return;
+	}
+	startHasFailed = true;
+	const out = document.getElementById('out');
+	out.textContent = 'WaveDude Next could not start: ' + (error && error.message || error);
+	out.style.cssText = 'font: 14px sans-serif; padding: 16px;';
+};
 
 try {
 	if (globalThis.crossOriginIsolated) {
@@ -178,10 +232,140 @@ try {
 	// ("memory import has a larger maximum size 65536 than the module's declared maximum 32768") and the runtime
 	// would give up only after logging each failure with a dump of the module (2026-11-13). This build is compiled
 	// ahead of time; what is interpreted in it is the little that compilation leaves over.
+	// The loading mark's bar and megabytes (index.html; 2026-11-22, the user's choice of look): how far the download
+	// is, in the megabytes that come over the network. The runtime says only how many files it has, and one of them,
+	// the compiled program, is three fifths of the download: a bar by files would stand for most of the time and
+	// then jump. So the files are fetched here, in the runtime's place (its own hook for that), and read as they
+	// arrive. A server announces a file's length as it sends it, compressed, while a page sees the bytes unpacked:
+	// a file under way counts by what has arrived of it over what it unpacks to, which for the compiled program is
+	// 3.4 times its length under gzip and 5 times under brotli (measured; any other file is there in a moment).
+	// The whole is known almost from the start: the runtime asks for its files sixteen at a time, by which the
+	// lengths would trickle in and the whole grow under the bar; so every file on the runtime's list is asked for
+	// here the moment the list is there, all at once, and handed over when the runtime comes for it. Until each of
+	// them has announced itself the caption names what has arrived and no whole. (A request for the lengths alone,
+	// ahead of the files, was tried: the development server answers such a request without a length.) A file is
+	// checked against its hash here, as the browser checks it for the runtime, so it is whole before it is handed
+	// on. Should any of this fail for a file, the runtime's own way fetches it and the bar counts it as arrived.
+	const megabyte = 1048576;
+	const unpacked = { gzip: 3.4, br: 5 };
+	const files = new Map();     // by name: the length announced, what a byte of it unpacks to, the bytes received, done
+	const begun = new Map();     // by name: the file as it is being fetched ahead of the runtime's asking, a promise
+	let listed = 0;              // how many files were begun so
+	let shownShare = 0;
+	let starting = false;
+	// the files are in: the first stage of the start (the stages are at the loading mark's functions, above)
+	const showStarting = () => {
+		starting = true;
+		globalThis.waveDudeStage(0);
+	};
+	const showDownload = () => {
+		const mark = document.getElementById('loading');
+		const size = document.getElementById('loading-size');
+		if (!mark || !size) { return; }
+		let arrived = 0;
+		let announced = 0;
+		let waiting = files.size < listed;
+		for (const file of files.values()) {
+			announced += file.length;
+			arrived += file.done ? file.length : Math.min(file.length, file.received / file.ratio);
+			waiting ||= !file.done;
+		}
+		if (announced === 0) { return; }
+		// The megabytes are a display of their own (the user's word: they had gone when the program's start took the
+		// caption): they stay when the download is over, and a file that comes while the program starts still counts.
+		// In the mark's language (index.html): its decimal sign and its word for "of".
+		const megabytes = bytes => (bytes / megabyte).toLocaleString(globalThis.waveDudeLoading.language, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+		size.textContent = megabytes(arrived) + (files.size < listed ? ' MB' : ' ' + globalThis.waveDudeLoading.of + ' ' + megabytes(announced) + ' MB');
+		if (starting) { return; }
+		if (!waiting) {
+			// every file is here: from now until its first picture the program is starting
+			showStarting();
+			return;
+		}
+		// files that have not announced themselves yet are reckoned at the mean of those that have, for the bar alone
+		const expected = announced * Math.max(1, listed / files.size);
+		shownShare = Math.max(shownShare, Math.min(1, arrived / expected));
+		moveBar(downloadShare * shownShare, 0.15);
+	};
+	const followed = async (name, address, integrity) => {
+		// a file with a hash is the one of that hash under any name it was ever stored by
+		const response = await fetch(address, { credentials: 'same-origin', cache: integrity ? 'force-cache' : 'no-cache' });
+		if (!response.ok || !response.body) { return response; }
+		const file = {
+			length: Number(response.headers.get('Content-Length')) || 0,
+			ratio: unpacked[response.headers.get('Content-Encoding')] || 1,
+			received: 0,
+			done: false,
+		};
+		files.set(name, file);
+		const parts = [];
+		const reader = response.body.getReader();
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) { break; }
+			parts.push(value);
+			file.received += value.length;
+			showDownload();
+		}
+		const bytes = new Uint8Array(file.received);
+		let at = 0;
+		for (const part of parts) {
+			bytes.set(part, at);
+			at += part.length;
+		}
+		parts.length = 0;
+		if (integrity && integrity.startsWith('sha256-')) {
+			let hash = '';
+			for (const byte of new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))) { hash += String.fromCharCode(byte); }
+			if ('sha256-' + btoa(hash) !== integrity) { throw new Error('the file at ' + address + ' is not the one this build names (its hash is another)'); }
+		}
+		// a server that announced no length: what arrived, as it would have come packed
+		if (file.length === 0) { file.length = file.received / file.ratio; }
+		file.done = true;
+		showDownload();
+		// the bytes are unpacked: the headers that say otherwise go
+		const headers = new Headers(response.headers);
+		headers.delete('Content-Encoding');
+		headers.delete('Content-Length');
+		return new Response(bytes, { status: response.status, statusText: response.statusText, headers });
+	};
+
 	const runtime = await dotnet.withConfig({
 		jsThreadBlockingMode: 'DangerousAllowBlockingWait',
 		runtimeOptions: ['--no-jiterpreter-traces-enabled', '--no-jiterpreter-jit-call-enabled'],
+	}).withResourceLoader((type, name, address, integrity) => {
+		// the runtime's own scripts are the browser's to load: a script is given by its address, not by its bytes
+		if (type === 'dotnetjs' || !document.getElementById('loading')) { return undefined; }
+		// the file begun ahead, once: a second asking for the same file is the runtime trying again, and fetches anew
+		const ahead = begun.get(name);
+		begun.delete(name);
+		return (ahead || followed(name, address, integrity)).catch(error => {
+			console.warn('The loading mark could not follow ' + name + ' (' + (error && error.message || error) + '); the runtime loads it its own way.');
+			const file = files.get(name);
+			files.set(name, { length: file ? file.length : 0, ratio: 1, received: 0, done: true });
+			showDownload();
+			return fetch(address, integrity ? { integrity } : undefined);
+		});
+	}).withOnConfigLoaded(config => {
+		const resources = config.resources;
+		// the loading mark: every file of the list is asked for now (the files lie beside the runtime's script); a
+		// failure waits for the runtime's asking, which then goes its own way
+		if (resources && document.getElementById('loading')) {
+			const beside = new URL('./_framework/', import.meta.url);
+			for (const list of [resources.wasmNative, resources.coreAssembly, resources.corePdb]) {
+				for (const entry of list || []) {
+					if (entry && entry.name && !begun.has(entry.name)) {
+						const file = followed(entry.name, new URL(entry.name, beside).href, entry.hash);
+						file.catch(() => { });
+						begun.set(entry.name, file);
+						listed++;
+					}
+				}
+			}
+		}
 	}).create();
+	// the runtime is up: whatever the bar made of the download, the program is starting now
+	showStarting();
 	// the GPU engine's script (webgpu-engine.js) writes what it reads from the card straight into the program's memory
 	globalThis.waveDudeRuntime = runtime;
 	// The runtime's own end, an abort or an exit, which no handler of the program's hears (it is the program that is
@@ -234,7 +418,6 @@ try {
 	});
 	globalThis.addEventListener('unhandledrejection', event => { report('A promise was rejected and nothing took it: ' + wordsOf(event.reason)); });
 } catch (error) {
-	document.getElementById('out').textContent = 'WaveDude Next could not start: ' + (error && error.message || error);
-	document.getElementById('out').style.cssText = 'color: #f1f1f1; font: 14px sans-serif; padding: 16px;';
+	startFailed(error);
 	throw error;
 }

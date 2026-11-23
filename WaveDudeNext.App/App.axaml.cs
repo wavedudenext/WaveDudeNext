@@ -23,6 +23,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
 using NLog;
 using NLog.Config;
@@ -79,6 +80,12 @@ public partial class App : Application
 	/// the user's sight. Set once, by the head, before the application starts.
 	/// </summary>
 	public static Action<string>? Stopped { get; set; }
+
+	/// <summary>
+	/// What a head without a window is told when the view's first picture is on the screen: the browser head takes the
+	/// page's loading mark away then (2026-11-20). Called once, on a thread of the pool; null where nobody asks.
+	/// </summary>
+	public static Action? Shown { get; set; }
 
 	/// <summary>An unhandled error in a line for the user: its kind and its message.</summary>
 	private static string WordsOf(Exception? error) => error == null ? "An error without a description." : error.GetType().Name + ": " + error.Message;
@@ -251,6 +258,17 @@ public partial class App : Application
 				view.Loaded -= OnLoaded;
 				Logger.Info("Display scale {Percent} %", Math.Round((TopLevel.GetTopLevel(view)?.RenderScaling ?? 1) * 100));
 				LogReady(view, firstStart);
+				// The head hears when the first picture is on the screen: the view is laid out by now, and the batch
+				// asked for here carries it to the renderer, whose "rendered" is that moment. Whatever the outcome: a
+				// head that waits with a loading mark must not wait for ever because a frame failed.
+				if (Shown is { } shown && ElementComposition.GetElementVisual(view)?.Compositor is { } compositor)
+				{
+					compositor.RequestCompositionBatchCommitAsync().Rendered.ContinueWith(_ => shown(), TaskScheduler.Default);
+				}
+				else
+				{
+					Shown?.Invoke();
+				}
 			}
 		}
 		base.OnFrameworkInitializationCompleted();

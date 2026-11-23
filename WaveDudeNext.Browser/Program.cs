@@ -49,11 +49,16 @@ internal static partial class Program
 	/// <summary>The system's own font where the browser hands it over (<see cref="SystemFont"/>); null where it does not.</summary>
 	private static SystemFont? _systemFont;
 
+	/// <summary>The context of the thread the page's scripts are called from, <c>Main</c>'s, for what another thread has to tell the page.</summary>
+	private static SynchronizationContext? _scripts;
+
 	private static async Task Main(string[] args)
 	{
 		// the thread the page's scripts can be called from: the console target posts its lines here, the GPU engine its
 		// calls to the card, the frame cache its file calls
 		SynchronizationContext? scripts = SynchronizationContext.Current;
+		// the page's loading mark is told how far the start is (main.js, waveDudeStage): the program runs
+		ShowStage(1);
 		App.App.SetupLogging(new BrowserConsoleTarget(scripts));
 		// what a desktop head's first line says with its executable's path: here the page's address, which main.js
 		// hands over as the one argument
@@ -66,6 +71,8 @@ internal static partial class Program
 		if (scripts != null)
 		{
 			App.App.Stopped = message => scripts.Post(static state => ShowStopped((string)state!), message);
+			// the page's loading mark goes when the program's first picture is on the screen (index.html, main.js)
+			App.App.Shown = () => scripts.Post(static _ => HideLoadingMark(), null);
 		}
 		// the program's memory in its two parts, before anything large is allocated: the heap below, a run's frames
 		// above (FrameArena says why)
@@ -101,6 +108,9 @@ internal static partial class Program
 		WaveEngineFactory.PlatformGpu = WebGpuWaveSimulator.TryCreate;
 		try
 		{
+			// the loading mark: the application is being set up; and, from the builder's AfterSetup, its view is made
+			ShowStage(2);
+			_scripts = scripts;
 			await BuildAvaloniaApp().StartBrowserAppAsync("out");
 		}
 		catch (Exception ex)
@@ -127,7 +137,20 @@ internal static partial class Program
 	public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App.App>()
 		.ConfigureFonts(fonts => fonts.AddFontCollection(new EmbeddedFontCollection(
 			new Uri(FontCollectionKey, UriKind.Absolute), new Uri(FontSource, UriKind.Absolute))))
-		.AfterSetup(_ => _systemFont?.UseAtStart())
+		.AfterSetup(_ =>
+		{
+			_systemFont?.UseAtStart();
+			// the loading mark's last stage, told at once where this is the scripts' own thread: a message posted to
+			// it would wait until the view is made, which is the stage it is to announce
+			if (SynchronizationContext.Current == _scripts)
+			{
+				ShowStage(3);
+			}
+			else
+			{
+				_scripts?.Post(static _ => ShowStage(3), null);
+			}
+		})
 		.With(new FontManagerOptions { DefaultFamilyName = FontFamilyName });
 
 	/// <summary>
@@ -148,6 +171,19 @@ internal static partial class Program
 	/// <summary>main.js: the notice over the page that the program has stopped, with the error's words; the first call's stays.</summary>
 	[JSImport("globalThis.waveDudeStopped")]
 	private static partial void ShowStopped(string message);
+
+	/// <summary>main.js: the page's loading mark, shown from the page's first moment, is taken away.</summary>
+	[JSImport("globalThis.waveDudeStarted")]
+	private static partial void HideLoadingMark();
+
+	/// <summary>
+	/// main.js: the loading mark's bar goes on to the end of a stage of the start (2026-11-22, the user's report of
+	/// a long gap after "Starting…", the bar having stood full for the seconds the program takes): 1 when Main
+	/// runs, 2 when the application is being set up, 3 when it is set up and its view is being made. The scripts'
+	/// thread.
+	/// </summary>
+	[JSImport("globalThis.waveDudeStage")]
+	private static partial void ShowStage(int stage);
 
 	/// <summary>
 	/// An error of the page's own scripts that nothing caught, or a promise nothing took the rejection of (main.js

@@ -2736,6 +2736,22 @@ address; `Runtime.enable` replays the console of the page before a navigation; t
 session; a menu is walked by clicks there, the key walk being unreliable for the reason above. **An Avalonia window
 that was never activated takes no posted keys once a modal dialog has closed** (the committed build the same): a
 probe gives each such flow a session of its own.
+**The page shows a loading mark until the program has drawn** (2026-11-20, the user's request: "just an empty grey
+screen" for the seconds the runtime and the program take). `index.html` holds it, the element `loading` inside `out`:
+the app's own spinner (the `SpinnerGeometry` path as an inline SVG, turning once a second by CSS) over the product's
+name, on the window's background, dark or light by the desktop's scheme (`prefers-color-scheme`, which is what the
+default theme, System, comes up in; a fixed theme chosen in the View menu is not followed, no script reading the
+settings before the program does). It goes when the program's first picture is on the screen: `App.Shown`, a hook the
+browser head sets as it sets `Stopped`, called after the single view's `Loaded` once the compositor's batch asked
+for there is `Rendered`; the head posts `globalThis.waveDudeStarted` (`main.js`, three lines). A failed start's
+message replaces the mark (and takes the page's colours: it had been #f1f1f1 whatever the background), the crash
+notice takes it away. **Avalonia's own splash was tried first and measured**: an element of the class
+`avalonia-splash` in the host is given `splash-close` at the top level's first animation frame (`AvaloniaView`, read
+at 12.1.5), which comes before the view's first layout: in the Debug build the mark went at 7.4 s and the first
+picture came at 9.5 s, the page empty between. With the hook the mark is in every capture, one each tenth of a
+second, up to the one before the first picture; seen dark and light. Not seen: the compiled build, a first visit
+through the service worker (the mark is the page's markup, so both loads have it), and the start that never comes,
+in which the mark now turns for ever (the open hang).
 **View > UI zoom says in a browser that the zoom is the browser's** (the same day, the user's report that the entry
 did nothing there, and his rule: no menu entry without a function unless it says where the function is).
 `WindowZoom` scales windows, and a page has none. The eight factors are bound to `!IsInBrowser`
@@ -2810,6 +2826,70 @@ for `PackedSimd.ConvertToInt32Saturate`); `Vector.ShiftRightLogical` takes twice
 in the conversions there. `library_check`'s byte-for-byte comparison with the pixel-by-pixel formula holds (the
 painted Example 16, noise at Full HD and at 5 × 3), in the browser's build 0 bytes of a Full HD picture of noise
 differ; 162 → 71 ms there on one thread, natively the same as before (11 to 14 ms in `bench-paint`, both).
+**The loading mark is the icon, the name and a bar with the megabytes** (2026-11-22, the user's word on the spinner
+over the name: it "does its job, but looks like ass"; his choice, A, of five looks drawn as a page of mock-ups,
+all "logo and progress": A as built, B a ring around the round icon, C the progress as the application's blue
+status bar, D the icon's wave growing outward, E a 2 px line at the page's top. **The mock-ups are kept on his
+word** ("keep the other mock-ups around, I might test them as well"): `%TEMP%\WaveDudeNext\loading-ideas\index.html`
+with `ideas.png`, not to be cleaned away as scratch; `?p=0.57` holds the progress at a value.) `index.html` has
+the mark, `favicon.svg` at 96 px with rounded corners, the name at 22 px, a 280 px bar of the accent colour whose
+width is the variable `--p`, and a caption; `main.js` sets both, so another of the looks is a change of that
+markup and its styles alone. **The progress is the download's own**, in the megabytes that come over the network:
+"12.4 of 21.7 MB", then "Starting…" until the first picture. The runtime tells only a count of files, of which
+the compiled program is three fifths of the bytes, so the files are fetched by the page in the runtime's place
+(`withResourceLoader`; not the runtime's scripts, which are given by address) and read as they arrive; a file
+under way counts by its received bytes over what it unpacks to (the server announces the packed length, a page
+sees unpacked bytes: 3.4 times under gzip and 5 under brotli for the compiled program); each file is checked
+against its hash from the runtime's list, as the browser's own check does for the runtime, and handed over
+whole. **Every file of the list is asked for at once, when the list is there** (`withOnConfigLoaded`), and
+handed over when the runtime comes for it: the runtime asks sixteen at a time, by which the lengths trickled in
+and the whole grew under the bar (38 → 62 MB in the Debug build); asking for the lengths alone ahead (HEAD) was
+tried, and the SDK's host answers that without a length. Until every file has announced itself the caption says
+what has arrived and no whole. A failure for a file sends it the runtime's own way. Seen in the Debug build on a
+throttled connection: "2.7 MB", "11.0 of 61.5 MB", "42.5 of 61.7 MB", "Starting…", the program ready, 227
+requests as before, the page's own thread never held for 0.4 s; and in the compiled build at 16 Mbit/s, dark and
+light: thirteen steps from "1.7 of 15.4 MB" to "14.7 of 15.4 MB" (the SDK's host sends brotli; GitHub Pages'
+gzip is about 21 MB), "Starting…" for the four seconds until the first picture, the program ready, no warning;
+from the browser's cache the start takes what it took (3.4 s). (The words were English whatever the language
+until the next day, see below.)
+**The bar is the whole way to the first picture, not the download alone** (the same night, the user's report:
+"There's a long gap after 'Starting' is displayed"). The bar had been full when the last file was in and then
+stood. Measured in the compiled build, from the page's request: "Starting…" at 0.85 s on a repeat visit (1.35 on
+a first), `Main`'s first line at 1.46, the page's scripts answered at 1.68, the application set up at 2.87,
+"ready" at 3.3, the first picture at 3.6 to 3.7: 2.8 s of start after the files, 4.2 s at a first visit, about
+8 s in a Debug build; the same with the runtime loading its files its own way (the mark taken out of the page:
+`Main` at 1.46 to 1.52, "ready" at 3.1 to 3.3), so fetching the files in the page costs nothing, and the wait
+had been behind the spinner all along. Now the download is the bar's first three fifths (`downloadShare`) and
+the start the rest, in four stages with the shares their times have: the files are in (known to the page),
+`Main` runs, the application is being set up, it is set up and its view is made (`waveDudeStage`, which
+`Program.cs` calls at 1, 2 and 3, the last from the builder's `AfterSetup`). During a stage the bar goes on
+towards the stage's end over five times the stage's usual time, fast at first and ever slower, and the next
+stage takes it on from wherever it is; it is moved by a transform with a transition, which the browser carries
+out beside the page's own work. Seen in the Debug build, sampled every 0.4 s over its 7.6 s: the bar further at
+every sample, where with twice the usual time it had stood at one place for 2.4 s; and in the compiled build,
+a repeat visit every 0.25 s (0.17, 0.60, 0.62, 0.69, 0.71, 0.74, 0.76, 0.78, 0.79, 0.83, the picture) and a first
+visit at 16 Mbit/s every 0.6 s (the megabytes up to 0.59, then 0.64, 0.69, 0.74, 0.78, 0.81, 0.85, 0.92, the
+picture): the program's picture comes before the bar's end, which it never stands at. **The megabytes are a
+display of their own** (2026-11-23, the user's word once "Starting…" had taken their place: "now we've lost the
+KB display. These can be independent"): under the bar, what is going on at the left (`loading-status`:
+"Loading…", then "Starting…") and the megabytes at the right (`loading-size`), which stay at "15.4 of 15.4 MB"
+while the program starts and still count a file that comes then. **The mark is in the program's theme and
+language** (2026-11-23, the user's rule: the settings `WaveDudeNext.Settings.Theme` and
+`WaveDudeNext.Settings.Language` of the browser's local storage where they exist, else the browser's own): a
+script in the page's head, ahead of the body, so nothing is drawn in the other theme first, marks the page with
+`data-theme` for "Light" or "Dark" (the styles' third and fourth rule; without the setting the desktop's scheme
+decides, as the program's System does) and settles the language (the setting's code, else the first two letters
+of `navigator.language`, English where there is no table for it); `globalThis.waveDudeLoading` holds the
+language and its three words, which `main.js` uses for "Starting…" and the megabytes, with the language's
+decimal sign. **The words are in the page, not in the string tables**, which the page cannot read before the
+program is there: Loading…/Starting…/of, Lädt…/Startet…/von, Chargement…/Démarrage…/sur, Laden…/Starten…/van
+("Starting" as the tables' `RunStateStarting`; the unit is MB in all four, as the program writes GB). Seen in
+the compiled build, five loads: no settings on a dark desktop in English; Light and "de" set on a dark desktop
+with an English browser (a light page, "Lädt…", "15,4 von 15,4 MB", and the program then light and German); no
+settings with a light desktop and a French browser; Dark set on a light desktop with a Dutch browser; a Spanish
+browser, which gets English. **The start itself is as
+long as it was** (2.8 s after the files in the compiled build, of which the application's set-up is 1.2 s);
+shortening it was not asked for and would begin with a profile of that set-up.
 
 ## People, name, license
 

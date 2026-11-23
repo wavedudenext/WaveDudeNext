@@ -30,12 +30,76 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<link rel="icon" type="image/x-icon" href="favicon.ico" />
   <title>WaveDude Next</title>
   <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #2d2d30; }
+    /* Until the program draws, the page is the window's background with a loading mark on it, in the colours of the
+       theme the program comes up in: the one chosen in its View menu where one was (the script below marks the
+       page with it), else the desktop's. The mark is the application's icon, its name, and a thin bar in the accent
+       colour for how far the way to the first picture is, the download and then the program's start; under it, at
+       the left what is going on and at the right the megabytes (main.js sets --p, from 0 to 1, the seconds the bar
+       takes to get there, --t, and the two texts). The bar is moved by a transform, which the browser carries out
+       beside the page's own work, so it runs smoothly while the program starts. */
+    :root { --page: #2d2d30; --ink: #f1f1f1; --dim: #9d9d9d; --track: #3f3f46; --accent: #007acc; }
+    @media (prefers-color-scheme: light) { :root { --page: #eeeef2; --ink: #1e1e1e; --dim: #6b6b6b; --track: #ccceDB; } }
+    :root[data-theme="dark"] { --page: #2d2d30; --ink: #f1f1f1; --dim: #9d9d9d; --track: #3f3f46; }
+    :root[data-theme="light"] { --page: #eeeef2; --ink: #1e1e1e; --dim: #6b6b6b; --track: #ccceDB; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--page); color: var(--ink); }
     #out { height: 100vh; width: 100vw; }
+    #loading { --p: 0; position: fixed; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      pointer-events: none; background: var(--page); font: 12px "Segoe UI", system-ui, sans-serif; }
+    #loading .icon { width: 96px; height: 96px; margin-bottom: 18px; border-radius: 18%; }
+    #loading .name { font-size: 22px; font-weight: 600; letter-spacing: 0.2px; }
+    #loading .bar { width: 280px; max-width: 70vw; height: 3px; margin: 16px 0 9px; background: var(--track); border-radius: 2px; overflow: hidden; }
+    #loading .bar i { display: block; height: 100%; background: var(--accent); transform-origin: 0 50%; transform: scaleX(var(--p));
+      transition: transform var(--t, 0.15s) cubic-bezier(0.2, 0.6, 0.3, 1); }
+    #loading .caption { display: flex; justify-content: space-between; width: 280px; max-width: 70vw; min-height: 16px; color: var(--dim);
+      font-variant-numeric: tabular-nums; }
   </style>
+  <script>
+    // The loading mark's theme and language (2026-11-23, the user's rule): the program's own settings where the
+    // visitor has chosen them, which the program keeps in the browser's local storage under the names below and
+    // only where they are not the default (System, and the system's language); else the browser's, as the program
+    // itself takes them. Here, ahead of the page's body, so the mark is never drawn in the other theme first. The
+    // words cannot come from the program's string tables, the program not being there yet: its four languages'
+    // words for the mark's three texts are these ("Starting" as the tables have it for a run).
+    (() => {
+      const setting = name => {
+        try { return localStorage.getItem('WaveDudeNext.Settings.' + name); } catch (error) { return null; }
+      };
+      const theme = setting('Theme');
+      if (theme === 'Light' || theme === 'Dark') { document.documentElement.dataset.theme = theme.toLowerCase(); }
+      const words = {
+        en: { loading: 'Loading…', starting: 'Starting…', of: 'of' },
+        de: { loading: 'Lädt…', starting: 'Startet…', of: 'von' },
+        fr: { loading: 'Chargement…', starting: 'Démarrage…', of: 'sur' },
+        nl: { loading: 'Laden…', starting: 'Starten…', of: 'van' },
+      };
+      const wanted = (setting('Language') || navigator.language || '').slice(0, 2).toLowerCase();
+      const language = words[wanted] ? wanted : 'en';
+      document.documentElement.lang = language;
+      globalThis.waveDudeLoading = { language, ...words[language] };
+    })();
+  </script>
 </head>
 <body>
-  <div id="out"></div>
+  <div id="out">
+    <!-- The loading mark (2026-11-20, the user's request: the page was an empty grey screen for the seconds the runtime
+         and the program take to arrive and start; its look of 2026-11-22 is his choice of five, the spinner over the
+         name having looked poor). It lies over the program's element and covers it until the program says its first
+         picture is on the screen (main.js, waveDudeStarted); a start that fails replaces this element's content, the
+         mark with it, with its message. Not Avalonia's own splash element, the one of the class avalonia-splash,
+         which it marks closed at its first animation frame: the view's first layout comes after that, and the page
+         was empty again for the two seconds it takes in the Debug build (measured). The icon is the page's own
+         (favicon.svg), which the browser has asked for already. -->
+    <div id="loading" role="status">
+      <img class="icon" src="favicon.svg" alt="" width="96" height="96">
+      <div class="name">WaveDude Next</div>
+      <div class="bar"><i></i></div>
+      <!-- two things that do not depend on each other (the user's word): what is going on, and the megabytes, which
+           stay when the download is over and the program starts -->
+      <div class="caption"><span id="loading-status"></span><span id="loading-size"></span></div>
+    </div>
+  </div>
+  <!-- the first of the mark's words, in the language the script in the head settled, before anything is drawn -->
+  <script>document.getElementById('loading-status').textContent = globalThis.waveDudeLoading.loading;</script>
   <script type="module" src="./main.js"></script>
 </body>
 </html>
