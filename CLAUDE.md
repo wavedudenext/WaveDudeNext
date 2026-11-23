@@ -2974,6 +2974,10 @@ Windows the paste is the old call. Proven in the head with stand-ins for `naviga
 (a headless Edge's clipboard is the user's own): 0 reads until the paste, a source's XML pasted and selected, plain
 words and a refusal each with their line. Not run: the desktop Avalonia head (its path on Windows is the old
 one), Linux, macOS, a real permission prompt.
+**Two tabs**: the cache's 20 GB are one room for all tabs (`OpfsFrameStorage.AvailableBytes` is the room less what
+the storage holds beyond this session's own files, the worker's `others`); seen with two tabs ("the application's
+other tabs hold 4.88 GB of that room"). **The memory is not shared**: each tab's 4 GB are address space, its
+frames, up to 3 GB, its own; one budget for all tabs would send a second tab's frames to the cache: his to say.
 **The interpreted methods**: `ExportJob.Render`'s sink loop and `SimulationRun.RunLoop` each had a catch inside a
 finally block, for which the compiler leaves a whole method to the interpreter; the catches are in a local function
 and a method of their own now (an IL scan for a handler inside a finally: 2 before, 0 after, none in the other

@@ -92,6 +92,9 @@ export async function free() {
 	return Math.max(0, (estimate.quota || 0) - (estimate.usage || 0));
 }
 
+// the bytes of the page's storage that anything but this session's own files holds: the application's other tabs
+export function others() { return ask({ op: 'others' }); }
+
 // a new, empty file; resolves to its number
 export function open(name) { return ask({ op: 'open', name }); }
 

@@ -115,6 +115,16 @@ async function perform(message) {
 			await (await cache()).removeEntry(file.name);
 			return 0;
 		}
+		// What of the page's storage is in use by anything but this session's own files, in bytes: the files of the
+		// application's other tabs, which share the one storage (2026-11-21, the user's choice: the room a run's file
+		// may take is one room for all tabs). The browser's figure for the whole counts a file by its length, as the
+		// handles here report theirs.
+		case 'others': {
+			const estimate = await navigator.storage.estimate();
+			let own = 0;
+			for (const file of files.values()) { own += file.access.getSize(); }
+			return Math.max(0, (estimate.usage || 0) - own);
+		}
 		// What earlier sessions left behind (a browser that was ended, a page that could not clean up as it went). The
 		// files of a session that lives, this one's and those of the application's other tabs, stay. Answers how many
 		// went.

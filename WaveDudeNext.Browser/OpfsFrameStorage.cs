@@ -49,6 +49,7 @@ internal sealed partial class OpfsFrameStorage : IFrameStorage
 	private static readonly Logger Logger = LogManager.GetLogger(typeof(OpfsFrameStorage).FullName!);
 	private static Task? _module;
 	private bool _reported;
+	private long _othersReported;
 
 	/// <summary>
 	/// What a run's file may take of the browser's storage: 20 GB (2026-11-14, the user's choice, so that every
@@ -56,7 +57,8 @@ internal sealed partial class OpfsFrameStorage : IFrameStorage
 	/// A figure of ours because the browser's is none: a page in Chromium is told that it may store 10 GiB more than
 	/// it has, on every machine and whatever the disk (since 133, so that a site cannot tell incognito mode by it),
 	/// while what is enforced is far more, up to 60 % of the disk. Where a browser or a full disk allows less than
-	/// this, the run fails at the write that is refused, with the browser's words.
+	/// this, the run fails at the write that is refused, with the browser's words. One room for all of the
+	/// application's tabs: what the others hold is taken off it (<see cref="AvailableBytes"/>).
 	/// </summary>
 	public const long Room = 20L << 30;
 
@@ -75,16 +77,19 @@ internal sealed partial class OpfsFrameStorage : IFrameStorage
 	public string NewPath() => $"run-{DateTime.Now:yyyyMMdd-HHmmss}-{_session}-{Interlocked.Increment(ref _sequence)}{FrameCache.Extension}";
 
 	/// <summary>
-	/// <see cref="Room"/>. The browser is still asked what it reports, since the asking tells whether it has such a
-	/// storage at all; the figure goes to the log, once.
+	/// <see cref="Room"/> less what the application's other tabs hold of the storage: the room is one for all of
+	/// them (2026-11-21, the user's choice; until then each tab reckoned the whole of it for itself against the one
+	/// storage). This session's own files are not taken off: the outgoing run's file goes as the new one comes. The
+	/// browser is still asked what it reports, since the asking tells whether it has such a storage at all; that
+	/// figure goes to the log, once, and the other tabs' share whenever it changes.
 	/// </summary>
 	/// <exception cref="IOException">The browser has no such storage.</exception>
 	public long AvailableBytes()
 	{
-		double reported = Call(async () =>
+		(double reported, double others) = Call(async () =>
 		{
 			await Module();
-			return await JsFree();
+			return (await JsFree(), await JsOthers());
 		});
 		if (!_reported)
 		{
@@ -92,7 +97,13 @@ internal sealed partial class OpfsFrameStorage : IFrameStorage
 			Logger.Debug("Frame cache: a run's file may take {Room:0} GB of the browser's storage; the browser reports {Reported:0.0} GB free for the page",
 				Room / 1073741824.0, reported / 1073741824.0);
 		}
-		return Room;
+		long held = (long)Math.Max(0, others);
+		if (held >> 20 != _othersReported >> 20)
+		{
+			_othersReported = held;
+			Logger.Debug("Frame cache: the application's other tabs hold {Others:0.00} GB of that room", held / 1073741824.0);
+		}
+		return Math.Max(0, Room - held);
 	}
 
 	/// <inheritdoc/>
@@ -141,6 +152,9 @@ internal sealed partial class OpfsFrameStorage : IFrameStorage
 
 	[JSImport("free", "frame-storage")]
 	private static partial Task<double> JsFree();
+
+	[JSImport("others", "frame-storage")]
+	private static partial Task<double> JsOthers();
 
 	[JSImport("open", "frame-storage")]
 	private static partial Task<int> JsOpen(string name);
