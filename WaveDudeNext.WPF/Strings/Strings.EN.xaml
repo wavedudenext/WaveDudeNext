@@ -136,6 +136,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="AboutOpenClMissing">OpenCL is not installed</s:String>
 	<s:String x:Key="AboutH264Encoders">H.264 encoders</s:String>
 	<s:String x:Key="AboutMediaFoundationMissing">Media Foundation is not available</s:String>
+	<s:String x:Key="AboutFfmpegMissing">ffmpeg is not installed</s:String>
 	<s:String x:Key="AboutNone">none</s:String>
 	<s:String x:Key="AboutCopy">_Copy system info</s:String>
 	<s:String x:Key="TipAboutCopy">Copy the system lines to the clipboard, for a bug report</s:String>
@@ -279,6 +280,8 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="ExportDialogFilterCsv">CSV file (*.csv)|*.csv</s:String>
 	<s:String x:Key="ExportFolderExistsFormat">The folder {0} exists and holds files. Replace them?</s:String>
 	<s:String x:Key="ExportError">The export failed.</s:String>
+	<s:String x:Key="ExportMp4NeedsFfmpeg">MP4 export needs the program ffmpeg, which was not found on this computer. Install ffmpeg (on Linux, the package of that name) and export again.</s:String>
+	<s:String x:Key="ExportMp4NeedsEncoder">The ffmpeg on this computer has no H.264 encoder. Install an ffmpeg that has libx264 or libopenh264 and export again.</s:String>
 	<s:String x:Key="ExportStatusFormat">Exporting {0} / {1} frames</s:String>
 	<s:String x:Key="ExportStatusWaiting">Export: waiting for the run</s:String>
 	<s:String x:Key="StatusComputingFormat">Computing frame {0}</s:String>

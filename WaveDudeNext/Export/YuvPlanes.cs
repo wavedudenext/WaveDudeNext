@@ -103,6 +103,35 @@ public sealed class YuvPlanes
 		Parallel.For(0, MacroblockRows, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, mbRow => ConvertRows(pixels.Span, mbRow * 16, mbRow * 16 + 16));
 	}
 
+	/// <summary>
+	/// Writes the planes as NV12, what the H.264 encoders take: the Y rows of the picture (the planes are padded to
+	/// 16, the picture is not), then Cb and Cr interleaved at half the size in both directions. For
+	/// <see cref="Subsampled"/> planes of an even size.
+	/// </summary>
+	/// <param name="target">Room for width × height × 3 / 2 bytes.</param>
+	public void CopyNv12(Span<byte> target)
+	{
+		int w = Width;
+		int h = Height;
+		for (int y = 0; y < h; y++)
+		{
+			Y.AsSpan(y * PaddedWidth, w).CopyTo(target.Slice(y * w, w));
+		}
+		Span<byte> uv = target[(w * h)..];
+		int chromaWidth = ChromaWidth;
+		for (int y = 0; y < h / 2; y++)
+		{
+			ReadOnlySpan<byte> cb = Cb.AsSpan(y * chromaWidth, w / 2);
+			ReadOnlySpan<byte> cr = Cr.AsSpan(y * chromaWidth, w / 2);
+			Span<byte> row = uv.Slice(y * w, w);
+			for (int x = 0; x < w / 2; x++)
+			{
+				row[2 * x] = cb[x];
+				row[2 * x + 1] = cr[x];
+			}
+		}
+	}
+
 	/// <summary>Converts picture rows <paramref name="fromY"/> (inclusive) to <paramref name="toY"/> (exclusive), an even count starting on an even row.</summary>
 	private void ConvertRows(ReadOnlySpan<int> frame, int fromY, int toY)
 	{

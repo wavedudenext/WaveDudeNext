@@ -134,6 +134,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="AboutOpenClMissing">OpenCL n'est pas installé</s:String>
 	<s:String x:Key="AboutH264Encoders">Encodeurs H.264</s:String>
 	<s:String x:Key="AboutMediaFoundationMissing">Media Foundation n'est pas disponible</s:String>
+	<s:String x:Key="AboutFfmpegMissing">ffmpeg n'est pas installé</s:String>
 	<s:String x:Key="AboutNone">aucun</s:String>
 	<s:String x:Key="AboutCopy">_Copier les infos système</s:String>
 	<s:String x:Key="TipAboutCopy">Copier les lignes système dans le presse-papiers, pour un rapport de bogue</s:String>
@@ -277,6 +278,8 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="ExportDialogFilterCsv">Fichier CSV (*.csv)|*.csv</s:String>
 	<s:String x:Key="ExportFolderExistsFormat">Le dossier {0} existe et contient des fichiers. Les remplacer ?</s:String>
 	<s:String x:Key="ExportError">L'export a échoué.</s:String>
+	<s:String x:Key="ExportMp4NeedsFfmpeg">L'export MP4 a besoin du programme ffmpeg, introuvable sur cet ordinateur. Installer ffmpeg (sous Linux, le paquet de ce nom) et exporter de nouveau.</s:String>
+	<s:String x:Key="ExportMp4NeedsEncoder">Le ffmpeg de cet ordinateur n'a pas d'encodeur H.264. Installer un ffmpeg avec libx264 ou libopenh264 et exporter de nouveau.</s:String>
 	<s:String x:Key="ExportStatusFormat">Export : {0} / {1} images</s:String>
 	<s:String x:Key="ExportStatusWaiting">Export : en attente de l'exécution</s:String>
 	<s:String x:Key="StatusComputingFormat">Calcul de l'image {0}</s:String>

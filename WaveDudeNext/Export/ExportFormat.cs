@@ -20,7 +20,11 @@ namespace WaveDudeNext.Export;
 /// <summary>The export formats, in the order of the Save dialog's filter: the videos first, then the sequences (the user's order, 2026-10-19).</summary>
 public enum ExportFormat
 {
-	/// <summary>An H.264 MP4 through the Media Foundation of Windows; the quality setting applies.</summary>
+	/// <summary>
+	/// An H.264 MP4 through the platform's own encoder (2026-11-15): the Media Foundation of Windows
+	/// (<see cref="Mp4Writer"/>), elsewhere the system's ffmpeg, or in a browser the browser's own encoder, with the
+	/// in-house container around its stream (<see cref="EncoderMp4Writer"/>); the quality setting applies.
+	/// </summary>
 	Mp4,
 	/// <summary>An MPEG-1 program stream of I-pictures (<c>.mpg</c>); the quality setting and the nearest standard frame rate apply.</summary>
 	Mpeg1,
@@ -46,6 +50,19 @@ public enum ExportFormat
 	/// Shares the extension with <see cref="Exr"/>: the dialog's filter tells them apart.
 	/// </summary>
 	ExrRoot,
+}
+
+/// <summary>What keeps a format from being written on this computer: the thing an H.264 MP4 needs that is not there, which the application names to the user.</summary>
+public enum ExportObstacle
+{
+	/// <summary>Windows without its Media Foundation (the N editions without the Media Feature Pack).</summary>
+	MediaFoundationMissing,
+	/// <summary>No ffmpeg on the path, where ffmpeg is the encoder (Linux): installing it is the remedy.</summary>
+	FfmpegMissing,
+	/// <summary>An ffmpeg on the path that has neither libx264 nor libopenh264.</summary>
+	FfmpegWithoutH264,
+	/// <summary>A browser that hands a page no H.264 encoder (WebCodecs): the head has set none (<see cref="ExportFormats.PlatformH264"/>), and offers the format in no dialog then.</summary>
+	BrowserWithoutH264,
 }
 
 /// <summary>What is known about each <see cref="ExportFormat"/>: extensions, whether it is a sequence, how to open its sink.</summary>
@@ -200,8 +217,40 @@ public static class ExportFormats
 	/// <summary>Whether the quality setting means anything to the format.</summary>
 	public static bool UsesQuality(ExportFormat format) => format is ExportFormat.Jpeg or ExportFormat.Mpeg1 or ExportFormat.Mp4;
 
-	/// <summary>Whether the format can be written here (MP4 needs Media Foundation).</summary>
-	public static bool IsAvailable(ExportFormat format) => format != ExportFormat.Mp4 || (OperatingSystem.IsWindows() && Mp4Writer.IsAvailable());
+	/// <summary>
+	/// The H.264 encoder of a head whose platform has one the library cannot reach itself; null, the default, where
+	/// the library's own ways serve (the Media Foundation, the system's ffmpeg). The browser head sets it at its
+	/// start where the browser encodes H.264 for a page (2026-11-21). Set once, before the first export; read on
+	/// any thread.
+	/// </summary>
+	public static PlatformH264Encoder? PlatformH264 { get; set; }
+
+	/// <summary>Whether the format can be written here (MP4 needs the platform's H.264 encoder, see <see cref="ObstacleTo"/>).</summary>
+	public static bool IsAvailable(ExportFormat format) => ObstacleTo(format) == null;
+
+	/// <summary>
+	/// What keeps the format from being written here; null when nothing does. Only MP4 can lack something: a head's
+	/// own encoder where it has set one (<see cref="PlatformH264"/>), else the Media Foundation on Windows, no
+	/// encoder at all in a browser, and elsewhere an ffmpeg on the path with an H.264 encoder, which is asked by
+	/// starting it (about a tenth of a second until it was found once).
+	/// </summary>
+	public static ExportObstacle? ObstacleTo(ExportFormat format)
+	{
+		if (format != ExportFormat.Mp4 || PlatformH264 != null)
+		{
+			return null;
+		}
+		if (OperatingSystem.IsWindows())
+		{
+			return Mp4Writer.IsAvailable() ? null : ExportObstacle.MediaFoundationMissing;
+		}
+		if (OperatingSystem.IsBrowser())
+		{
+			// no process can be started there, so no ffmpeg is asked: the head's encoder or none
+			return ExportObstacle.BrowserWithoutH264;
+		}
+		return FfmpegH264Encoder.Probe().Obstacle;
+	}
 
 	/// <summary>
 	/// Where a sequence chosen as <c>C:\Temp\name.png</c> goes: the folder <c>C:\Temp\name</c>, holding
@@ -236,7 +285,7 @@ public static class ExportFormats
 	/// <param name="quality">1..100 for the lossy formats.</param>
 	/// <param name="plannedFrames">How many frames will come at most (the AVI sizes its indexes by it, a sequence the width of its frame numbers).</param>
 	/// <param name="firstFrame">The timeline frame number of the first frame: a sequence's files are numbered from it (2026-10-19).</param>
-	/// <exception cref="NotSupportedException">The format cannot carry the size, or MP4 is not available here.</exception>
+	/// <exception cref="NotSupportedException">The format cannot carry the size, or MP4 is not available here (<see cref="ObstacleTo"/>).</exception>
 	public static IFrameSink Open(ExportFormat format, string path, int width, int height, int fps, int quality, int plannedFrames, int firstFrame = 0)
 	{
 		switch (format)
@@ -255,11 +304,22 @@ public static class ExportFormats
 			case ExportFormat.Avi:
 				return new AviWriter(path, width, height, fps, plannedFrames);
 			case ExportFormat.Mp4:
-				if (!OperatingSystem.IsWindows())
+				// each platform's own encoder: a head's where it has set one (the browser's), with the in-house container
+				// around its stream; on Windows the Media Foundation, which writes the whole file; elsewhere the system's
+				// ffmpeg as the encoder, with the same container
+				if (PlatformH264 is { } platform)
 				{
-					throw new NotSupportedException("MP4 export needs the Media Foundation of Windows.");
+					return EncoderMp4Writer.Create(path, width, height, fps, quality, plannedFrames, platform.Open);
 				}
-				return new Mp4Writer(path, width, height, fps, quality);
+				if (OperatingSystem.IsWindows())
+				{
+					return new Mp4Writer(path, width, height, fps, quality);
+				}
+				if (OperatingSystem.IsBrowser())
+				{
+					throw new NotSupportedException("This browser hands a page no H.264 encoder.");
+				}
+				return EncoderMp4Writer.Create(path, width, height, fps, quality, plannedFrames, FfmpegH264Encoder.Open);
 			case ExportFormat.Mov:
 				return new MovWriter(path, width, height, fps, plannedFrames);
 			case ExportFormat.MovPng:

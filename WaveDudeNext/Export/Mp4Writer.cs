@@ -123,9 +123,7 @@ public sealed class Mp4Writer : IFrameSink
 			}
 			_writer = (MediaFoundation.IMFSinkWriter)Marshal.GetObjectForIUnknown(_writerPtr);
 			// the author's bitrate rule: 0.01 × 50^(quality/100) bits per pixel (0.15 at 70), 300 kbit/s to 200 Mbit/s
-			double bitsPerPixel = 0.01 * Math.Pow(50.0, Quality / 100.0);
-			long bitrate = (long)Math.Round((double)_encodedWidth * _encodedHeight * _fps * bitsPerPixel);
-			Bitrate = (int)Math.Clamp(bitrate, 300_000L, 200_000_000L);
+			Bitrate = H264Settings.BitrateFor(_encodedWidth, _encodedHeight, _fps, Quality);
 			IntPtr outputType = MakeType(MediaFoundation.H264Format, Bitrate, topDown: false);
 			int streamIndex = 0;
 			try
@@ -359,7 +357,7 @@ public sealed class Mp4Writer : IFrameSink
 				{
 					if (_nv12)
 					{
-						CopyNv12(new Span<byte>((void*)data, byteLength));
+						_planes.CopyNv12(new Span<byte>((void*)data, byteLength));
 					}
 					else
 					{
@@ -424,30 +422,6 @@ public sealed class Mp4Writer : IFrameSink
 
 	/// <inheritdoc/>
 	public void Dispose() => Close();
-
-	/// <summary>The planes as NV12: the Y rows (the planes are padded to 16, the picture is not), then Cb and Cr interleaved at half resolution.</summary>
-	private void CopyNv12(Span<byte> target)
-	{
-		int w = _encodedWidth;
-		int h = _encodedHeight;
-		for (int y = 0; y < h; y++)
-		{
-			_planes.Y.AsSpan(y * _planes.PaddedWidth, w).CopyTo(target.Slice(y * w, w));
-		}
-		Span<byte> uv = target[(w * h)..];
-		int chromaWidth = _planes.ChromaWidth;
-		for (int y = 0; y < h / 2; y++)
-		{
-			ReadOnlySpan<byte> cb = _planes.Cb.AsSpan(y * chromaWidth, w / 2);
-			ReadOnlySpan<byte> cr = _planes.Cr.AsSpan(y * chromaWidth, w / 2);
-			Span<byte> row = uv.Slice(y * w, w);
-			for (int x = 0; x < w / 2; x++)
-			{
-				row[2 * x] = cb[x];
-				row[2 * x + 1] = cr[x];
-			}
-		}
-	}
 
 	/// <summary>A progressive video media type of the encoded size, the frame rate and square pixels; the caller releases it.</summary>
 	private IntPtr MakeType(Guid subtype, int bitrate, bool topDown)

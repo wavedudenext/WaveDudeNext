@@ -317,6 +317,9 @@ internal static partial class ExportChecks
 			{
 				Console.WriteLine("  skip mp4: Media Foundation not available");
 			}
+			// MP4 where the platform's encoder hands back encoded frames: the in-house container, ffmpeg as the encoder
+			CheckH264(check, folder, frames, w, h);
+			Console.WriteLine("--- export: formats");
 
 			// formats
 			check(ExportFormats.FromPath(@"C:\x\a.JPEG") == ExportFormat.Jpeg && ExportFormats.FromPath("a.mpeg") == ExportFormat.Mpeg1 && ExportFormats.FromPath("a.txt") == null, "formats: extensions map, unknown is null");
@@ -580,6 +583,7 @@ internal static partial class ExportChecks
 			mp4Job.Start();
 			check(mp4Job.Completion.Wait(30000) && mp4Job.State == ExportState.Completed && mp4Job.FramesDone == 10 && new FileInfo(mp4Path).Length > 100, "job: an MP4 of 10 frames written on the job's thread" + (mp4Job.Error != null ? " (" + mp4Job.Error.Message + ")" : ""));
 		}
+		CheckH264Job(check, folder, store, fieldLayer);
 	}
 
 	/// <summary>Per-frame cost of every encoder at a given size, for `-- bench-export [w h]`.</summary>
@@ -773,9 +777,12 @@ internal static partial class ExportChecks
 				("mov (Animation)", () => ExportFormats.Open(ExportFormat.Mov, Path.Combine(folder, "j.mov"), w, h, 30, 85, 60)),
 				("mp4", () => ExportFormats.Open(ExportFormat.Mp4, Path.Combine(folder, "j.mp4"), w, h, 30, 85, 60)),
 				("mp4, writer not throttling", () => { Mp4Writer.Throttle = false; return ExportFormats.Open(ExportFormat.Mp4, Path.Combine(folder, "k.mp4"), w, h, 30, 85, 60); }),
+				("mp4 through ffmpeg and the in-house container", () => EncoderMp4Writer.Create(Path.Combine(folder, "l.mp4"), w, h, 30, 85, 60, FfmpegH264Encoder.Open)),
 			})
 			{
-				if ((name == "mp4" && !(OperatingSystem.IsWindows() && ExportFormats.IsAvailable(ExportFormat.Mp4))) || (name.StartsWith("jpeg sequence (WIC", StringComparison.Ordinal) && preferredJpeg == null))
+				if ((name.StartsWith("mp4", StringComparison.Ordinal) && !name.Contains("ffmpeg", StringComparison.Ordinal) && !(OperatingSystem.IsWindows() && ExportFormats.IsAvailable(ExportFormat.Mp4)))
+					|| (name.Contains("ffmpeg", StringComparison.Ordinal) && FfmpegH264Encoder.Probe().Obstacle != null)
+					|| (name.StartsWith("jpeg sequence (WIC", StringComparison.Ordinal) && preferredJpeg == null))
 				{
 					continue;
 				}

@@ -29,7 +29,7 @@ using WaveDudeNext.UI.Rendering;
 namespace WaveDudeNext.UI;
 
 /// <summary>An export failed, before or after it started: what the application tells the user, by the key of its text, with the error when there is one.</summary>
-/// <param name="Key">The string table's key: "ExportError" or "RunError".</param>
+/// <param name="Key">The string table's key: "ExportError" or "RunError", or the text of what an MP4 needs that the computer lacks ("ExportMp4NeedsFfmpeg", "ExportMp4NeedsEncoder").</param>
 /// <param name="Error">The error, or null when the message alone says it.</param>
 public sealed record ExportFailure(string Key, Exception? Error);
 
@@ -320,10 +320,19 @@ public sealed class Exporter : ObservableObject
 	private async Task StartAsync(bool field, bool intensity, bool still, int stillFrame, ExportFormat format, string chosen, bool ask)
 	{
 		Logger.Debug("Export: {What} as {Format} to {Path}", still ? "the shown frame " + stillFrame : field && intensity ? "field and intensity" : field ? "field" : "intensity", format, chosen);
-		if (!ExportFormats.IsAvailable(format))
+		if (ExportFormats.ObstacleTo(format) is { } obstacle)
 		{
-			Logger.Error("MP4 export is not available: Media Foundation is missing on this computer (Windows N needs the Media Feature Pack)");
-			Failed?.Invoke(this, new ExportFailure("ExportError", null));
+			// what the platform's H.264 encoder needs is not there: the log says what, and where installing something
+			// is the remedy the message's own text says it too
+			(string reason, string key) = obstacle switch
+			{
+				ExportObstacle.FfmpegMissing => ("no ffmpeg was found on the path; installing ffmpeg is the remedy", "ExportMp4NeedsFfmpeg"),
+				ExportObstacle.FfmpegWithoutH264 => ("the ffmpeg on the path has no H.264 encoder (libx264 or libopenh264)", "ExportMp4NeedsEncoder"),
+				ExportObstacle.BrowserWithoutH264 => ("this browser hands a page no H.264 encoder", "ExportError"),
+				_ => ("Media Foundation is missing on this computer (Windows N needs the Media Feature Pack)", "ExportError"),
+			};
+			Logger.Error("MP4 export is not available: {Reason}", reason);
+			Failed?.Invoke(this, new ExportFailure(key, null));
 			return;
 		}
 		// the output paths: one per layer; "both" takes the chosen name without a layer suffix and appends its own

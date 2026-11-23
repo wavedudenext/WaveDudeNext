@@ -134,6 +134,7 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="AboutOpenClMissing">OpenCL is niet geïnstalleerd</s:String>
 	<s:String x:Key="AboutH264Encoders">H.264-encoders</s:String>
 	<s:String x:Key="AboutMediaFoundationMissing">Media Foundation is niet beschikbaar</s:String>
+	<s:String x:Key="AboutFfmpegMissing">ffmpeg is niet geïnstalleerd</s:String>
 	<s:String x:Key="AboutNone">geen</s:String>
 	<s:String x:Key="AboutCopy">Systeeminfo _kopiëren</s:String>
 	<s:String x:Key="TipAboutCopy">De systeemregels naar het klembord kopiëren, voor een foutmelding</s:String>
@@ -277,6 +278,8 @@ version. It is distributed WITHOUT ANY WARRANTY. See the LICENSE.md file or
 	<s:String x:Key="ExportDialogFilterCsv">CSV-bestand (*.csv)|*.csv</s:String>
 	<s:String x:Key="ExportFolderExistsFormat">De map {0} bestaat en bevat bestanden. Vervangen?</s:String>
 	<s:String x:Key="ExportError">De export is mislukt.</s:String>
+	<s:String x:Key="ExportMp4NeedsFfmpeg">De MP4-export heeft het programma ffmpeg nodig, dat op deze computer niet is gevonden. Installeer ffmpeg (onder Linux het pakket met die naam) en exporteer opnieuw.</s:String>
+	<s:String x:Key="ExportMp4NeedsEncoder">De ffmpeg op deze computer heeft geen H.264-encoder. Installeer een ffmpeg met libx264 of libopenh264 en exporteer opnieuw.</s:String>
 	<s:String x:Key="ExportStatusFormat">Exporteren: {0} / {1} beelden</s:String>
 	<s:String x:Key="ExportStatusWaiting">Export: wacht op de run</s:String>
 	<s:String x:Key="StatusComputingFormat">Beeld {0} wordt berekend</s:String>

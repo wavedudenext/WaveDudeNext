@@ -71,8 +71,13 @@ harnesses run.
   never claims about him he has not made.
 - **Spelling**: British in the UI, except **"license"** everywhere (the GPL's own word). No talk of BOMs or line
   endings.
-- **Dependencies**: no package named after a person, no AGPL/GPL libraries, flag vibe-coded candidates; in-house
-  preferred (docking, encoders, colour picker are in-house). Microsoft packages are fine.
+- **Dependencies**: none is best (2026-11-15, the user's words: "I prefer not to include ANY dependencies"); in-house
+  preferred (docking, encoders, colour picker are in-house). **A GPL library poses no problem** (the same day, when
+  x264 came up for the MP4 export off Windows: the program is GPL-3.0-or-later itself; until then the rule read "no
+  AGPL/GPL libraries"); AGPL stays out, he spoke of the GPL alone. What the rule was made against, his words: "a
+  pane management/GUI library, which would be the foundation of all code in the apps": nothing the apps' code rests
+  on is a dependency; one piece at the edge, behind an interface, is weighed on its own. No package named after a
+  person, flag vibe-coded candidates. Microsoft packages are fine.
 - **WPF idioms**: commands not `_Click`, bindings not hand-pushed state, `DynamicResource` for every theme brush and
   string, `XmlSerializer` with sparse XML (attributes, repeated children, `[DefaultValue]`), Segoe UI 9 pt, the
   dnSpy look (its sources are GPL: look, do not copy). Inside a `DataTemplate` reference the string keys directly
@@ -709,7 +714,7 @@ FrameStore: native memory up to the budget, the rest in a temp file (%LOCALAPPDA
   **Export last** (Ctrl+E, File menu below Export, 2026-10-28, the user's request): the session's last run export again,
   the same layers, format and path, no dialog, an existing file or sequence folder replaced without a question; a still
   does not count; disabled until the first run export since the project was opened. Shortcuts (the user's choice, GIMP's
-  pair): Ctrl+Shift+E, I, B the field, the intensity, both; Ctrl+Shift+F, G the two frames. In the dialog's order (2026-10-19) H.264 MP4 via Media Foundation (the only
+  pair): Ctrl+Shift+E, I, B the field, the intensity, both; Ctrl+Shift+F, G the two frames. In the dialog's order (2026-10-19) H.264 MP4 via Media Foundation (off Windows through the system's ffmpeg and a container of ours since 2026-11-15, see Open items; the only
   Windows-bound library piece besides WIC JPEG, which has an in-house fallback), MPEG-1, OpenDML AVI, QuickTime
   MOV with the Animation codec or the PNG codec (2026-10-19, each sample a PNG, for a lossless hand-over to Resolve,
   Premiere and Final Cut; both share `.mov`, so the dialog's filter decides the format and the extension follows it,
@@ -2567,6 +2572,47 @@ icon columns, the tree's folder icons in the tree, the window and behind the Add
 and the timeline's ticks. **A figure run shows every look change since the last one**: before saying which figures
 will change, read the log of commits since the last one that touched `Assets` (that evening the prediction named two
 figures and eighteen changed).
+
+**MP4 off Windows** (2026-11-15, the user's design: every platform's own H.264 encoder behind one interface, before
+any part of x264 is considered: Media Foundation as it is, VideoToolbox on macOS, always there, WebCodecs in the
+browser, asked at run time with `VideoEncoder.isConfigSupported`, and on Linux what the system has, with a message
+naming what to install; H.264 is a piece at the edge that can be swapped, see Dependencies). **The interface, the
+container and the Linux encoder were built that day**: `IH264Encoder` (NV12 frames in, encoded frames out to an
+`IH264Receiver`: the parameter sets once, then each frame's NAL units behind 4-byte lengths, the form an MP4 stores),
+`Mp4ContainerWriter` (the in-house container, `MovWriter`'s sibling: `avc1` with its `avcC`, the key frames in `stss`,
+the index reserved at the front by the planned frame count, to a stream it can seek in), `EncoderMp4Writer` (the
+`IFrameSink`: pads an odd size, converts with the planes the Windows writer uses, BT.601 and studio range, feeds the
+encoder) and `FfmpegH264Encoder`: the system's ffmpeg on the path as the encoder alone, raw NV12 into its standard
+input, the raw H.264 stream out of its standard output, cut into frames by `H264AnnexBSplitter` (his choice of two,
+over ffmpeg's own fragmented MP4 on a pipe; an ordinary MP4 from ffmpeg needs a file it can seek in). libx264 where
+ffmpeg has it, at a constant quality (CRF 20 at quality 70 and the author's bitrate rule's slope from there: mine, his
+to change), else libopenh264 at the author's bitrate (not run: this machine's ffmpeg has x264); no B-frames, a key
+frame a second, the stream tagged with the matrix and range of the planes. x264 also puts a key frame at a cut of its
+own finding, left on. `ExportFormats.Open` takes `Mp4Writer` on Windows, unchanged, and the ffmpeg encoder everywhere
+else (macOS too until VideoToolbox is written: mine, his to change); `ExportFormats.ObstacleTo` says what is missing,
+which `Exporter` makes the message of: `ExportMp4NeedsFfmpeg` and `ExportMp4NeedsEncoder` in the four tables (the
+wording mine), Windows N's as before; a probe that found no encoder is made again at the next ask, so an ffmpeg
+installed meanwhile is found without a restart; the App's About names the ffmpeg and its encoder off Windows. Linux
+ships as an AppImage (his word), so the system's ffmpeg is reachable; to watch: an AppImage's start script may set a
+library path its child processes inherit (from memory, not checked). **Proven on this machine**, nothing in it being
+Linux's alone: `library_check` (the splitter on a hand-made stream in pieces of 1, 3 and 7 bytes; the container's
+boxes walked as a reader does, the index at the front and at the end; the sink with a stand-in encoder; and with the
+ffmpeg on the path, the 2018 build: 45 frames, key frames at 1 and 31, the file read back by ffmpeg's own demuxer and
+decoder as "h264 (High) (avc1), yuv420p(tv, smpte170m…), 30 fps", and through an `ExportJob`), LIBRARY OK, 826;
+`bench-export 1920 1080`: the job 28.7 ms a frame through ffmpeg (x264, medium) against 13.9 through Media Foundation
+(NVENC). **Not seen**: a Linux machine (the message in the app, the About line, an AppImage), libopenh264, another
+ffmpeg than the 2018 one, a player other than ffmpeg on the files; no UI harness was run, the app's flow on Windows
+being the old one. **Not built**: VideoToolbox on macOS, an `IH264Encoder` with the same container. **The browser's
+is built** (2026-11-22, `WebCodecsH264Encoder` behind the library's hook `ExportFormats.PlatformH264`, the file
+written into the picked one as it is made; see "The round of ten" under Port), and since that day the container
+carries a `colr` box with the planes' matrix and range, a browser's encoder writing none into its stream. Open: hardware encoders through
+ffmpeg; Windows N through an ffmpeg on its path. Read on the way: x264's library changes its binary interface with
+its build number, which the open function's name carries, so a system's libx264 cannot be called by P/Invoke, and
+VideoLAN publishes command-line builds alone; Cisco's OpenH264 encodes Constrained Baseline alone and its patent cover
+holds only for its binary downloaded by the user; an in-house encoder was weighed and not chosen. **Noticed, not
+checked**: `YuvPlanes` converts with BT.601 and the Windows writer names the range alone, so a player that takes an
+untagged HD stream for BT.709 would show the Media Foundation's files slightly off in colour; what Media Foundation
+writes into the stream was not looked at.
 
 **The tests for the 0.1.4 release of the WPF head** (2026-11-19, the user's request: "extensive tests for the changes
 made since 0.1.3, including the export/rendering"; of the working tree, HEAD 1f198c0 with 76 uncommitted paths, 61

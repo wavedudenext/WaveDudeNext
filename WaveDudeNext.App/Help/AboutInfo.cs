@@ -137,10 +137,18 @@ public static class AboutInfo
 		}
 	}
 
-	/// <summary>The H.264 encoders Media Foundation offers, as the WPF head lists them; MP4 off Windows is a question of its own (the port piped to ffmpeg).</summary>
+	/// <summary>
+	/// What encodes H.264 here: on Windows the encoders Media Foundation offers, as the WPF head lists them; elsewhere
+	/// the system's ffmpeg with the encoder taken of it (2026-11-15), or that it is not installed, or that it has none.
+	/// </summary>
 	private static string Encoders(Func<string, string> label)
 	{
-		if (!OperatingSystem.IsWindows() || !Mp4Writer.IsAvailable())
+		if (!OperatingSystem.IsWindows())
+		{
+			FfmpegProbe ffmpeg = FfmpegH264Encoder.Probe();
+			return !ffmpeg.Found ? label("AboutFfmpegMissing") : ffmpeg.Encoder == null ? ffmpeg.Description + ": " + label("AboutNone") : ffmpeg.Description;
+		}
+		if (!Mp4Writer.IsAvailable())
 		{
 			return label("AboutMediaFoundationMissing");
 		}
