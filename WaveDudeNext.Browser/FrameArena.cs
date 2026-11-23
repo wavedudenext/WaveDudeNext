@@ -64,25 +64,34 @@ internal sealed class FrameArena : IFrameAllocator
 	/// one that has no memory at all, so every frame goes to the frame cache rather than into the heap.
 	/// </summary>
 	/// <param name="reserve">Bytes of the program's memory, from its start, that stay the heap's.</param>
+	/// <param name="granted">
+	/// The ceiling of the memory the browser gave, in bytes: the page's script makes the memory and falls back to a
+	/// lower ceiling where the browser refuses the 4 GB the program is built for (main.js), which the C library
+	/// does not learn of. A value above the built ceiling, or none handed over, means the built one.
+	/// </param>
 	/// <param name="layout">What was set up, for the log.</param>
-	public static IFrameAllocator? TryCreate(long reserve, out string layout)
+	public static IFrameAllocator? TryCreate(long reserve, long granted, out string layout)
 	{
 		const double GiB = 1073741824.0;
-		uint ceiling = wavedude_heap_ceiling();
+		uint built = wavedude_heap_ceiling();
 		uint heapEnd = wavedude_heap_end();
-		if (ceiling <= 1u << 31)
+		if (built <= 1u << 31)
 		{
-			layout = $"the program's memory ends at {ceiling / GiB:0.00} GB: no part of its own for the frames";
+			layout = $"the program's memory ends at {built / GiB:0.00} GB: no part of its own for the frames";
 			return null;
 		}
+		// where the browser gave less, the two parts are made all the same: the heap is held below the reserve, so the
+		// frames cannot crowd the program out of what memory there is, and they get what lies above, be it little
+		uint ceiling = (uint)Math.Clamp(granted, 2L * Page, built);
+		string given = ceiling < built ? $" (the browser gave no more; the program is built for {built / GiB:0.00} GB)" : "";
 		uint limit = (uint)Math.Clamp(reserve, Page, ceiling - Page) / Page * Page;
 		if (wavedude_partition(limit) == 0)
 		{
-			layout = $"the heap (at {heapEnd / GiB:0.00} GB) could not be held below {limit / GiB:0.00} GB: the frames get no memory, all of them go to the frame cache";
+			layout = $"the heap (at {heapEnd / GiB:0.00} GB) could not be held below {limit / GiB:0.00} GB: the frames get no memory, all of them go to the frame cache{given}";
 			return new NoMemory();
 		}
 		uint end = ceiling / Page * Page;
-		layout = $"the program's memory ends at {ceiling / GiB:0.00} GB; the heap, {heapEnd / GiB:0.00} GB of it in use, ends at {wavedude_heap_end() / GiB:0.00} GB for good, the {(end - limit) / GiB:0.00} GB from {limit / GiB:0.00} GB on are the frames'";
+		layout = $"the program's memory ends at {ceiling / GiB:0.00} GB{given}; the heap, {heapEnd / GiB:0.00} GB of it in use, ends at {wavedude_heap_end() / GiB:0.00} GB for good, the {(end - limit) / GiB:0.00} GB from {limit / GiB:0.00} GB on are the frames'";
 		return new FrameArena(limit, end);
 	}
 

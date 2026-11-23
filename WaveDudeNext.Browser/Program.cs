@@ -16,6 +16,7 @@
 // <https://www.gnu.org/licenses/>.
 
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
 using Avalonia;
@@ -77,8 +78,10 @@ internal static partial class Program
 			App.App.Shown = () => scripts.Post(static _ => HideLoadingMark(), null);
 		}
 		// the program's memory in its two parts, before anything large is allocated: the heap below, a run's frames
-		// above (FrameArena says why)
-		if (FrameArena.TryCreate(FrameMemory.BrowserReserve, out string layout) is { } frames)
+		// above (FrameArena says why). The memory's ceiling is main.js's second argument: 4 GB, or less where the
+		// browser refused that
+		long granted = args.Length > 1 && long.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out long ceiling) && ceiling > 0 ? ceiling : long.MaxValue;
+		if (FrameArena.TryCreate(FrameMemory.BrowserReserve, granted, out string layout) is { } frames)
 		{
 			FrameMemory.Allocator = frames;
 		}

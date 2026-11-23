@@ -276,6 +276,49 @@ try {
 	// runtime remembers for good. A published build lists every assembly as core and has no such moment; a build
 	// that is not published, which is what Start serves in Debug, lists seven, with some 190 in the rest. So the
 	// rest is made core here, the symbol files with it, before the loader looks at the lists.
+	//
+	// The program's memory where the browser does not give the 4 GB (2026-11-21, on the user's word to look at such a
+	// browser). The runtime's script asks for a memory that may grow to 4 GB, and where the browser refuses that (it
+	// sets the whole range aside at once, which a device short of address space or of memory cannot), the runtime
+	// logs the error and its start neither comes nor fails: the page's loading mark turned for ever. So for the
+	// runtime's one request this script stands in the constructor's place: the memory is made as the runtime asks
+	// for it, and where that is refused, the same with a ceiling of 2 GB and then of 1 GB, which the program takes as
+	// well (a memory may end lower than the program was built for; the frames' part is then smaller or none and the
+	// frames go to the frame cache, FrameArena.cs); where even that is refused, the start fails in words. The ceiling
+	// the browser gave goes to the program as its second argument: the C library knows only the one the program was
+	// built with. (A memory made here beforehand and handed to the runtime was the first form, for an evening: it
+	// must begin as large as the build declares, 512 pages in a published build and 721 in a Debug one, which this
+	// script cannot know; the Debug build did not start.)
+	const page = 65536;
+	const BrowsersMemory = WebAssembly.Memory;
+	let ceiling = 0;
+	const programMemory = function (descriptor) {
+		// anything but the program's own memory, shared and with a ceiling, is none of this function's
+		if (!descriptor || !descriptor.shared || !descriptor.maximum) {
+			return new BrowsersMemory(descriptor);
+		}
+		WebAssembly.Memory = BrowsersMemory;
+		let refusal = null;
+		for (const pages of new Set([descriptor.maximum, 32768, 16384])) {
+			if (pages > descriptor.maximum || pages < descriptor.initial) {
+				continue;
+			}
+			try {
+				const memory = new BrowsersMemory({ ...descriptor, maximum: pages });
+				ceiling = pages * page;
+				return memory;
+			} catch (error) {
+				refusal = error;
+			}
+		}
+		const failure = new Error('the browser gives the program no memory to run in, not even one that may grow to 1 GB (' + (refusal && refusal.message || refusal) + ')');
+		// the runtime will neither return nor fail after this, so the page says it here
+		startFailed(failure);
+		throw failure;
+	};
+	programMemory.prototype = BrowsersMemory.prototype;
+	WebAssembly.Memory = programMemory;
+
 	// The loading mark's bar and megabytes (index.html; 2026-11-22, the user's choice of look): how far the download
 	// is, in the megabytes that come over the network. The runtime says only how many files it has, and one of them,
 	// the compiled program, is three fifths of the download: a bar by files would stand for most of the time and
@@ -416,6 +459,7 @@ try {
 			}
 		}
 	}).create();
+	WebAssembly.Memory = BrowsersMemory;
 	// the runtime is up: whatever the bar made of the download, the program is starting now
 	showStarting();
 	// the GPU engine's script (webgpu-engine.js) writes what it reads from the card straight into the program's memory
@@ -433,7 +477,7 @@ try {
 		globalThis.waveDudeStopped('The runtime ended, with exit code ' + code + '.');
 		if (onExit) { onExit(code); }
 	};
-	await runtime.runMain(runtime.getConfig().mainAssemblyName, [globalThis.location.href]);
+	await runtime.runMain(runtime.getConfig().mainAssemblyName, [globalThis.location.href, String(ceiling)]);
 
 	// Every input event wakes the application's UI thread (Program.Wake): on the threaded runtime that thread sleeps
 	// until one of its own timers is due or a job is posted to it, and Avalonia queues the browser's input for it

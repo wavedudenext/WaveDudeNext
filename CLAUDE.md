@@ -2905,6 +2905,39 @@ in the rebuilt head: Example 16 with 16-bit samples at half resolution, both pic
 8 ms a frame while the run was followed. Left
 as it was that day: the two conversions' lanes ran at 8 ns a value on one thread there, a fifth of what four lanes
 should give (the `Vector128` shifts, found and mended the next day, see "The round of ten" below).
+**A browser that does not give the 4 GB of memory or the 20 GB of storage** (2026-11-21, the user's question how
+the head reacts; each refusal brought about in a headless Edge through its debugging port, on the repository's
+Release build). **Storage**: with the origin's quota at 500 MB (`Storage.overrideQuotaForOrigin`) a run that needs
+16 GB of cache does not start, the sizing of its file being refused (`truncate`, QuotaExceededError; the browser's
+figure for its free storage stays "10.0 GB" under the override): the dialog "The simulation could not start. The
+browser's storage: QuotaExceededError: Failed to execute 'truncate' …: No space available for this operation", the
+program alive. The browser's own words, with nothing about lowering the preview's quality: his to decide.
+**Memory that will not grow** (`WebAssembly.Memory.prototype.grow` made to refuse in the page and, before its own
+code, in every worker): beyond 1.5 GB a run planned at 776 frames in memory ends "125 in memory (0.5 GB) and 4875
+on disk"; beyond 0.6 GB the two parts cannot be made, "the frames get no memory, all of them go to the frame
+cache", and the run completes with 5000 on disk. The "Run started" line names the plan, the "Run Completed" line
+what happened. **The memory itself refused, which was a fault**: the runtime's script asks for a memory that may
+grow to 4 GB (`new WebAssembly.Memory` in `dotnet.native.js`), a browser sets that range aside at once, and where
+it cannot, the runtime logs the error and its `create()` neither returns nor fails: the page's loading mark turned
+for ever. **Now `main.js` stands in for the memory's constructor while the runtime is made** (`WebAssembly.Memory`
+replaced for the length of `dotnet…create()` and put back; the first shared memory with a ceiling that is asked for
+is the program's): the runtime's own request as it is, then the same with a ceiling of 2 GB, then of 1 GB, and
+where all three are refused the start fails in words ("WaveDude Next could not start: the browser gives the
+program no memory to run in, not even one that may grow to 1 GB"). **The first form, a memory made by `main.js`
+and handed over with `withModuleConfig({ wasmMemory })`, broke the Debug build** (found the same night: a memory
+handed over must have the initial size the program declares, 512 pages in a published build and 721 in a Debug
+one, "memory import has 512 pages which is smaller than the declared initial of 721"; the stand-in takes the
+runtime's own figures, whatever they are). The ceiling it got goes to the program as `Main`'s second argument,
+the C library knowing only the one the program is built with, and `FrameArena.TryCreate` makes the two parts within
+it: the heap below 1 GB as ever, the frames above, be that 3 GB, 1 GB or nothing. Proven on the rebuilt head: the
+usual start (4 GB, ready after 5 s, the runtime's memory being the page's); 2 GB at the most ("the program's memory
+ends at 2.00 GB (the browser gave no more; the program is built for 4.00 GB)", a long run planned at 258 frames in
+memory and ended with 250 there and 4750 on disk); 1 GB at the most (none in memory, 5000 on disk, completed);
+every memory refused (the message, where the mark had turned). Not seen: a real device that refuses, another
+browser. **Driver notes**: a script is put into every worker before its own code by `Target.setAutoAttach` with
+`waitForDebuggerOnStart`, a `Runtime.evaluate` on the worker's session and `Runtime.runIfWaitingForDebugger`; into
+the page by `Page.addScriptToEvaluateOnNewDocument`; a word of the driver's stop list must not be in the address
+(a parameter named "abort" ended a run at its first line).
 **The interpreted methods**: `ExportJob.Render`'s sink loop and `SimulationRun.RunLoop` each had a catch inside a
 finally block, for which the compiler leaves a whole method to the interpreter; the catches are in a local function
 and a method of their own now (an IL scan for a handler inside a finally: 2 before, 0 after, none in the other
