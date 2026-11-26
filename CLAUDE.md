@@ -18,7 +18,7 @@ harnesses run.
   report the work as uncommitted. Never commit, push, reset, amend, stash, checkout, rebase or merge on your own.
   Enforced by `.claude/hooks/git-guard.ps1` (Windows PowerShell, since 2026-11-14; a quarter of a second or more a
   shell command for its start); a shell command whose text merely mentions git plus such a word is denied too. End
-  commit messages with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`. **Hooks are read once, at a
+  commit messages with `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`. **Hooks are read once, at a
   session's start**: a changed `.claude/settings.json` serves the next session, and the running one goes on calling
   what it read (seen that night: the old wording answered after the switch).
 - **No Python, anywhere, ever** (2026-11-14, the user's words: "I NEVER WANT TO SEE PYTHON AGAIN"; said twice that
@@ -3475,6 +3475,41 @@ for his word. **Not covered by any of it, a hand's**: the mouse (drags of handle
 gradient bar's markers, the tree's drag and drop, the graph boxes' grips), the memory warning's window, a second
 monitor of another scale, the bundled EXE, a machine without OpenCL or without the Desktop Runtime, and a figure
 run, which needs his word.
+
+**A stopped or paused run's recordings end at its last step** (2026-11-26, found when the user asked what the WPF
+head's 0.1.4 release still lacks and `library_check` was run on HEAD: one run of two failed "GPU scratch series
+matches the GPU run's first 121 samples" and threw at the profile check after it; in every version, 0.1.3 included).
+`SimulationRun` applied the probes' batches to `Traces` at its heartbeat and once more after its last step, which a
+stopped run never reaches and a pause did not do, so the traces ended up to 33 ms of stepping before the frames: a
+graph over a stopped run's last frames lacked its last samples and profiles, and the check compared a run stopped
+early with fewer than 121. Now a pause publishes a heartbeat before its state, and a cancelled run one from its catch
+(`PublishStopped`, a method of its own with the warning, as `ReleaseEngine`). Two checks in `library_check`'s paused
+and stopped run, before: "751 samples at step 838" and "879 samples of 901 steps, 440 profiles of 451"; after: 809 at
+809, 865 of 865, 433 of 433, LIBRARY OK, 878. The first failing run's output was lost to a `tail` of mine (the rule
+above: a failing run's output is kept), so that failure is explained by the mechanism, not read from its own lines.
+**The harnesses with it, once, on the user's word** (the same evening; nine against a single-file EXE published from
+the working tree into `%TEMP%`, `ProbeGraphCheck` and `PreviewQualityCheck` against the Release build, `KeyboardCheck`
+against the Debug build last, which leaves the file types where they were; a driver script that starts each as a
+process of its own, keeps its whole output, ends an instance left open and puts the settings file back; 8 min 21 s):
+`PreviewCheck` 43, `RunCheck` 71 and `ColorPickerCheck` 13 (the first runs of those two with the one-level
+tolerance), `LanguageCheck` and `PreviewQualityCheck` 0 failures, `ImportCheck` 10, `ExportCheck` 45,
+`SceneImageCheck` 9, `AboutCheck` 18, `ProbeGraphCheck` 39, `KeyboardCheck` 14; the three logs without a line at Warn
+or above. `SelectionCheck` stopped at its first check: the "+ Source" button had the focus, the posted Space added no
+source (the app's log has no edit in that session), and the script threw at the row it then looked for, its other
+nine checks not evaluated. Run again alone on his word, with `-Trace` and his hands off the keyboard: 10 of 10, the
+log clean. The first failure's cause is not known (a held Alt would do it: a WPF button leaves Alt+Space to the
+system menu). A single harness against another EXE than the Debug build takes the file types with it: the two
+classes under `HKCU\Software\Classes` are exported with `reg export` before and imported after.
+**The figures retaken for 0.1.4** (the same evening, on the user's word, a full run: 51 figures, no problem, no note,
+the app's log clean): 47 byte for byte as committed, `Legend.md` with them; `main-window.png`, `main-window.svg`,
+`timeline.svg` and `preview.svg` changed, each compared pixel by pixel with the committed picture. Example 16's 9000
+steps: the timeline's ruler (4499 frames where 4999 were, 3971 pixels of its band), one digit of the readout (61
+pixels) and the playhead's badge 29 px further right. And four pixels in each picture under the "g" of the "Right
+box" label, 1 to 4 levels apart, the one label that lies on a lit part of the pictures: the name's outline since it
+is made once and drawn under a translation (2026-11-20), which at the figures' zoom of 1.25 is not the same to the
+level as an outline made in place (the note under Numbers says 0 bytes of the overlays' own drawing at zoom 1).
+`MANUAL.md` said in two places that a run is made first for an export, the Export section and the probes' CSV
+sentence; both now say that the export computes its own frames or values and the preview's run stays.
 
 **Unsolved: clicks on the intensity picture selected nothing** (2026-10-22, seen once, not reproduced). In
 Jeroen's `logical_elements_example.wdproj` (git history up to 02d0e2d; Example 18 is its curated form), after several
