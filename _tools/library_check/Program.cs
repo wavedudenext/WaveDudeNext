@@ -5706,6 +5706,8 @@ internal static class Program
 			Thread.Sleep(200);
 			Check(run.State == RunState.Paused && run.StepsDone == atPause && atPause > 0 && atPause < spec.Steps, "paused at step " + atPause + " and holding");
 			Check(run.IsPauseRequested, "pause is reported as requested");
+			// the recordings go with the step count, not with the last heartbeat (up to 33 ms of stepping earlier, until 2026-11-26)
+			Check(run.Traces[0].Series.Count == atPause && run.Traces[0].StepsSampled == atPause, "a paused run's recordings reach its step (" + run.Traces[0].Series.Count + " samples at step " + atPause + ")");
 			run.TogglePause();
 			wait.Restart();
 			while (run.State != RunState.Running && wait.ElapsedMilliseconds < 5000)
@@ -5716,6 +5718,9 @@ internal static class Program
 			run.Stop();
 			Check(run.Completion.Wait(10000) && run.State == RunState.Cancelled && !run.IsActive, "stopped -> Cancelled, " + run.StepsDone + " steps, " + run.FrameCount + " frames");
 			Check(run.FrameCount == store.Count && run.FrameCount > 0, "frame count published matches the store");
+			int profilesDue = run.StepsDone > 0 ? (run.StepsDone - 1) / spec.VisualizeEvery + 1 : 0;
+			Check(run.Traces[0].Series.Count == run.StepsDone && run.Traces[1].Profiles.Count == profilesDue && run.Traces[2].Profiles.Count == profilesDue,
+				"a stopped run's recordings reach its last step and frame (" + run.Traces[0].Series.Count + " samples of " + run.StepsDone + " steps, " + run.Traces[1].Profiles.Count + " profiles of " + profilesDue + ")");
 			if (run.EngineDescription.StartsWith("GPU", StringComparison.Ordinal) && run.FrameCount > 60)
 			{
 				// the GPU scratch path: two requests on one kept engine (the probe program compiled once), compared with the GPU run

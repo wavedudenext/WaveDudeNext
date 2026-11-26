@@ -99,7 +99,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 	/// <inheritdoc/>
 	public event PropertyChangedEventHandler? PropertyChanged;
 
-	/// <summary>A probe batch was applied to <see cref="Traces"/>; at most every 50 ms, plus a final one.</summary>
+	/// <summary>A probe batch was applied to <see cref="Traces"/>; at most thirty times a second, plus one at a pause and a final one, also of a stopped run.</summary>
 	public event EventHandler<ProbeUpdate>? ProbesUpdated;
 
 	/// <summary>The run reached a final state; raised exactly once, after <see cref="State"/> changed.</summary>
@@ -241,6 +241,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 	{
 		var stopwatch = Stopwatch.StartNew();
 		IWaveEngine? engine = null;
+		ProbeCollector? collector = null;
 		RunState final = RunState.Completed;
 		Exception? error = null;
 		int stepsDone = 0;
@@ -249,7 +250,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 			CancellationToken token = _cancel.Token;
 			SceneData scene = Spec.BuildScene();
 			ProbeSampler? sampler = Spec.Probes.Length > 0 ? ProbeSampler.Build(Spec.Probes, scene.CanvasWidth, scene.CanvasHeight, scene.Rim, Spec.Seed) : null;
-			ProbeCollector? collector = sampler != null ? new ProbeCollector(sampler) : null;
+			collector = sampler != null ? new ProbeCollector(sampler) : null;
 			engine = WaveEngineFactory.Create(scene, Spec.Engine, Spec.PreferGpu, Spec.Emitters, out string note);
 			Logger.Info("Engine: {0}", engine.Description);
 			if (note.Length > 0)
@@ -312,15 +313,12 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 			{
 				if (!_gate.IsSet)
 				{
-					// paused: report the exact step count; the time of the pause does not count
+					// paused: report the exact step count, the frames stored (the paced publisher may have skipped the
+					// newest) and the recordings up to this step, which the last heartbeat, up to 33 ms of stepping ago,
+					// did not have (2026-11-26); the time of the pause does not count
 					stopwatch.Stop();
-					int done = stepsDone;
-					Post(() =>
-					{
-						StepsDone = done;
-						FrameCount = Volatile.Read(ref _latestFrameCount); // the paced publisher may have skipped the newest
-						State = RunState.Paused;
-					});
+					PublishHeartbeat(engine, collector, stepsDone);
+					Post(() => State = RunState.Paused);
 					_gate.Wait(token);
 					Post(() => State = RunState.Running);
 					stopwatch.Start();
@@ -370,6 +368,7 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 		catch (OperationCanceledException)
 		{
 			final = RunState.Cancelled;
+			PublishStopped(engine, collector, stepsDone);
 		}
 		catch (OutOfMemoryException)
 		{
@@ -428,6 +427,30 @@ public sealed class SimulationRun : INotifyPropertyChanged, IDisposable
 		catch (Exception ex)
 		{
 			Logger.Warn(ex, "The engine could not be released cleanly.");
+		}
+	}
+
+	/// <summary>
+	/// A stopped run's last heartbeat, on the worker's thread, while the engine still exists: the recordings since
+	/// the heartbeat before, so the probes' traces end at the run's last step, as its frames do. Until 2026-11-26 only
+	/// a run that reached its end published them, and a stopped run's traces ended up to 33 ms of stepping before its
+	/// last frame (found when <c>library_check</c> compared a stopped run's first 121 samples and it had fewer). A
+	/// failure is a warning, the run being over either way. A method of its own for the browser's compiler, as
+	/// <see cref="ReleaseEngine"/> is.
+	/// </summary>
+	private void PublishStopped(IWaveEngine? engine, ProbeCollector? collector, int stepsDone)
+	{
+		if (engine == null)
+		{
+			return;
+		}
+		try
+		{
+			PublishHeartbeat(engine, collector, stepsDone);
+		}
+		catch (Exception ex)
+		{
+			Logger.Warn(ex, "The stopped run's last recordings could not be read.");
 		}
 	}
 
